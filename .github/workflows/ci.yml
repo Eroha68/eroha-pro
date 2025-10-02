@@ -21,16 +21,16 @@ jobs:
         with:
           python-version: "3.10"
 
-      # 3. Устанавливаем зависимости
+      # 3. Устанавливаем зависимости из requirements.txt
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt
 
-      # 4. Линтер (ruff)
+      # 4. Проверка кода линтером ruff
       - name: Lint (ruff)
         run: ruff check . --exit-zero
 
-      # 5. Запуск тестов (pytest)
+      # 5. Запуск тестов с pytest
       - name: Run tests (pytest)
         run: pytest -q
