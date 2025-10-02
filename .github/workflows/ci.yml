@@ -9,22 +9,28 @@ on:
 jobs:
   test:
     runs-on: ubuntu-latest
+
     steps:
+      # 1. Клонируем репозиторий
       - name: Checkout repo
         uses: actions/checkout@v4
 
+      # 2. Устанавливаем Python
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
           python-version: "3.10"
 
+      # 3. Устанавливаем зависимости
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt
 
+      # 4. Линтер (ruff)
       - name: Lint (ruff)
         run: ruff check . --exit-zero
 
+      # 5. Запуск тестов (pytest)
       - name: Run tests (pytest)
         run: pytest -q
