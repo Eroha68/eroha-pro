@@ -1,0 +1,25 @@
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+exclude = ["venv", ".venv"]
+
+[tool.ruff.lint]
+# Базовый набор, по желанию можно расширять
+select = ["E", "F", "I"]  # pycodestyle, pyflakes, isort
+ignore = []
+
+[tool.black]
+line-length = 100
+target-version = ["py310"]
+
+[tool.isort]
+profile = "black"
+line_length = 100
+known_first_party = []
+known_third_party = []
+src_paths = ["."]
+skip = ["venv", ".venv"]
+
+[tool.pytest.ini_options]
+addopts = "-q -ra"
+testpaths = ["tests"]
