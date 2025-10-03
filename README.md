@@ -1,3 +1,4 @@
+![CI](https://github.com/Eroha68/eroha-pro/actions/workflows/ci.yml/badge.svg)
 # eroha-pro
 
 ![CI](https://github.com/Eroha68/eroha-pro/actions/workflows/ci.yml/badge.svg?branch=main)
