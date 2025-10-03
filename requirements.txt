@@ -1,2 +1,7 @@
 pytest
+pytest-cov
+
 ruff
+black
+isort
+
