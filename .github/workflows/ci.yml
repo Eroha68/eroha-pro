@@ -2,17 +2,9 @@ name: CI
 
 on:
   push:
-    branches: [ main ]
+    branches: [main]
   pull_request:
-    branches: [ main ]
-  workflow_dispatch:
-
-permissions:
-  contents: read
-
-concurrency:
-  group: ci-${{ github.ref }}
-  cancel-in-progress: true
+    branches: [main]
 
 jobs:
   lint-and-test:
@@ -25,41 +17,49 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
-          python-version: '3.10'
+          python-version: "3.11"
 
       - name: Cache pip
         uses: actions/cache@v4
         with:
           path: ~/.cache/pip
-          key: ${{ runner.os }}-pip-${{ hashFiles('requirements.txt') }}
-          restore-keys: ${{ runner.os }}-pip-
+          key: ${{ runner.os }}-pip-${{ hashFiles('**/requirements*.txt') }}
+          restore-keys: |
+            ${{ runner.os }}-pip-
 
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt
+          pip install pytest coverage ruff black isort pre-commit
 
-      # --- LINT & STYLE ---
-      - name: Ruff (lint)
+      # --- Ruff ---
+      - name: Ruff lint
         run: ruff check .
 
-      - name: Ruff (format check)
-        run: ruff format --check .
+      - name: Ruff format check
+        run: ruff format --check . || (echo "⚠️ Formatting required. Run 'ruff format .' locally to fix." && exit 1)
 
+      # --- isort ---
       - name: isort (imports order check)
-        run: isort . --check-only --diff
+        run: isort . --check-only --profile black
 
-      - name: Black (format check)
+      # --- Black ---
+      - name: Black format check
         run: black --check .
 
-      # --- TESTS & COVERAGE ---
+      # --- pre-commit ---
+      - name: Run pre-commit checks
+        run: pre-commit run --all-files
+
+      # --- Tests ---
       - name: Run tests with coverage
         run: |
-          pytest --cov=. --cov-report=xml --cov-report=term
+          coverage run -m pytest -q
+          coverage report -m
 
       - name: Upload coverage artifact
         uses: actions/upload-artifact@v4
         with:
-          name: coverage-xml
-          path: coverage.xml
-          if-no-files-found: warn
+          name: coverage-report
+          path: .coverage
