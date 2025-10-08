@@ -5,3 +5,8 @@ ruff
 black
 isort
 
+black
+isort
+pytest
+pytest-cov
+ruff
