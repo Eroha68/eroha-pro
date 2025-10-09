@@ -59,3 +59,4 @@ pytest -q
     cache-dependency-path: |
       requirements.txt
       tests/requirements.txt
+Тест авто-синхронизации 🚀
