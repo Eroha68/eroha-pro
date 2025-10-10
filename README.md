@@ -1,6 +1,7 @@
+[![CI](https://github.com/Eroha68/eroha-pro/actions/workflows/ci.yml/badge.svg)](https://github.com/Eroha68/eroha-pro/actions/workflows/ci.yml)
+[![codecov](https://codecov.io/gh/Eroha68/eroha-pro/branch/main/graph/badge.svg)](https://codecov.io/gh/Eroha68/eroha-pro)
+![Dependabot](https://img.shields.io/badge/Dependabot-enabled-success)
 # eroha-pro
-
-[![CI](https://github.com/Eroha68/eroha-pro/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/Eroha68/eroha-pro/actions/workflows/ci.yml)
 
 Набор экспериментных и инфраструктурных решений для проекта.
 
