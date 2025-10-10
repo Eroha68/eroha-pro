@@ -1,9 +1,26 @@
-![CI](https://github.com/Eroha68/eroha-pro/actions/workflows/ci.yml/badge.svg)
 # eroha-pro
 
-![CI](https://github.com/Eroha68/eroha-pro/actions/workflows/ci.yml/badge.svg?branch=main)
+[![CI](https://github.com/Eroha68/eroha-pro/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/Eroha68/eroha-pro/actions/workflows/ci.yml)
 
-Набор экспериментов и инфраструктуры для проекта.
+Набор экспериментных и инфраструктурных решений для проекта.
+
+---
+
+## ⚙️ Как запустить проверки локально
+
+```bash
+# создать и активировать виртуальное окружение (пример для Windows PowerShell)
+python -m venv .venv
+.venv\Scripts\Activate.ps1
+
+# зависимости
+pip install -r tests/requirements.txt || pip install -r requirements.txt
+
+# линтер
+ruff check .
+
+# тесты
+pytest -q
 
 ## Как запустить проверки локально
 
