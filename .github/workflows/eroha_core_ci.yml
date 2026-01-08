@@ -26,3 +26,42 @@ jobs:
       - name: 🔒 Проверка целостности документации
         run: |
           sha256sum ErohaPRO_Implementation_Plan_v1.md || true
+          
+  powershell-check:
+    name: 🔍 Проверка PowerShell скриптов
+    runs-on: windows-latest
+    steps:
+      - name: 📥 Скачиваем репозиторий
+        uses: actions/checkout@v3
+
+      - name: ⚙️ Проверяем синтаксис PowerShell-файлов
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          Get-ChildItem -Path . -Recurse -Include *.ps1 -ErrorAction SilentlyContinue | ForEach-Object {
+            Write-Host "Проверяем $_ ..."
+            try {
+              pwsh -NoLogo -NoProfile -Command "Get-Command $_ | Out-Null"
+            } catch {
+              Write-Error "Ошибка в $_"
+              exit 1
+            }
+          }
+
+  build-archive:
+    name: 📦 Сборка и архивирование ядра Eroha Core
+    runs-on: ubuntu-latest
+    needs: [validate-core, powershell-check]
+    steps:
+      - name: 📥 Скачиваем репозиторий
+        uses: actions/checkout@v3
+
+      - name: 🗜️ Создаём архив ядра
+        run: |
+          zip -r ErohaSuite_Core.zip Core/ Docs/ Memory/ SOP/ Utils/ LegalPack/
+
+      - name: 🚀 Сохраняем артефакт
+        uses: actions/upload-artifact@v3
+        with:
+          name: ErohaSuite_Core_Build
+          path: ErohaSuite_Core.zip
