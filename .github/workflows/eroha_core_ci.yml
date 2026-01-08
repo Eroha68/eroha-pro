@@ -27,6 +27,41 @@ jobs:
         run: |
           sha256sum ErohaPRO_Implementation_Plan_v1.md || true
           
+  name: Eroha Core CI/CD
+
+on:
+  push:
+    branches: [ main ]
+  schedule:
+    - cron: '0 9 * * *' # запуск каждый день в 09:00 UTC
+
+jobs:
+  validate-core:
+    runs-on: ubuntu-latest
+    steps:
+      - name: 📥 Скачиваем репозиторий
+        uses: actions/checkout@v3
+
+      - name: ✅ Проверяем YAML-файлы
+        run: |
+          pip install yamllint
+          yamllint . --strict
+
+      - name: ✅ Проверяем JSON-файлы
+        run: |
+          for f in $(find . -name "*.json"); do
+            echo "Проверяем $f"
+            python -m json.tool < $f > /dev/null || exit 1
+          done
+
+      - name: 🔒 Проверяем целостность документации
+        run: |
+          if [ -f ErohaPRO_Implementation_Plan_v1.md ]; then
+            sha256sum ErohaPRO_Implementation_Plan_v1.md || true
+          else
+            echo "Файл документации не найден, пропускаем шаг."
+          fi
+
   powershell-check:
     name: 🔍 Проверка PowerShell скриптов
     runs-on: windows-latest
@@ -38,13 +73,18 @@ jobs:
         shell: pwsh
         run: |
           $ErrorActionPreference = "Stop"
-          Get-ChildItem -Path . -Recurse -Include *.ps1 -ErrorAction SilentlyContinue | ForEach-Object {
-            Write-Host "Проверяем $_ ..."
-            try {
-              pwsh -NoLogo -NoProfile -Command "Get-Command $_ | Out-Null"
-            } catch {
-              Write-Error "Ошибка в $_"
-              exit 1
+          $psFiles = Get-ChildItem -Path . -Recurse -Include *.ps1 -ErrorAction SilentlyContinue
+          if ($psFiles.Count -eq 0) {
+            Write-Host "PowerShell файлов не найдено, шаг пропущен."
+          } else {
+            foreach ($file in $psFiles) {
+              Write-Host "Проверяем $($file.FullName)"
+              try {
+                pwsh -NoLogo -NoProfile -Command "Get-Command '$($file.FullName)' | Out-Null"
+              } catch {
+                Write-Error "Ошибка в $($file.FullName): $_"
+                exit 1
+              }
             }
           }
 
@@ -58,10 +98,11 @@ jobs:
 
       - name: 🗜️ Создаём архив ядра
         run: |
-          zip -r ErohaSuite_Core.zip Core/ Docs/ Memory/ SOP/ Utils/ LegalPack/
+          mkdir -p artifacts
+          zip -r artifacts/ErohaSuite_Core.zip . -x "*.git*" ".github/*" "__pycache__/*"
 
       - name: 🚀 Сохраняем артефакт
         uses: actions/upload-artifact@v3
         with:
           name: ErohaSuite_Core_Build
-          path: ErohaSuite_Core.zip
+          path: artifacts/ErohaSuite_Core.zip
