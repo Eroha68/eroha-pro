@@ -1,32 +1,4 @@
-name: Eroha Core CI/CD
-on:
-  push:
-    branches: [ main ]
-  schedule:
-    - cron: '0 9 * * *' # запуск каждый день в 09:00 UTC
-
-jobs:
-  validate-core:
-    runs-on: ubuntu-latest
-    steps:
-      - name: 📥 Скачиваем репозиторий
-        uses: actions/checkout@v3
-
-      - name: ✅ Проверяем YAML-файлы
-        run: |
-          pip install yamllint
-          yamllint . --strict
-
-      - name: ✅ Проверяем JSON-файлы
-        run: |
-          for f in $(find . -name "*.json"); do
-            python -m json.tool < $f > /dev/null || exit 1
-          done
-
-      - name: 🔒 Проверка целостности документации
-        run: |
-          sha256sum ErohaPRO_Implementation_Plan_v1.md || true
-          
+       
   name: Eroha Core CI/CD
 
 on:
@@ -106,3 +78,27 @@ jobs:
         with:
           name: ErohaSuite_Core_Build
           path: artifacts/ErohaSuite_Core.zip
+          
+  release:
+    name: 🏁 Автоматическая публикация релиза
+    runs-on: ubuntu-latest
+    needs: [build-archive]
+    steps:
+      - name: 📥 Скачиваем репозиторий
+        uses: actions/checkout@v3
+
+      - name: 🏷️ Генерируем номер версии
+        id: version
+        run: echo "VERSION=v$(date +'%Y.%m.%d.%H%M')" >> $GITHUB_ENV
+
+      - name: 🚀 Публикуем релиз на GitHub
+        uses: softprops/action-gh-release@v1
+        with:
+          tag_name: ${{ env.VERSION }}
+          name: "Eroha Core Release ${{ env.VERSION }}"
+          body: |
+            ✅ Автоматическая сборка Eroha Core.
+            📦 Включены: ядро, PowerShell-скрипты, документация.
+          files: artifacts/ErohaSuite_Core.zip
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
