@@ -3,6 +3,12 @@ name: 🚀 Auto Deploy to Hugging Face Space
 on:
   push:
     branches: [main]
+    paths:
+      - 'app.py'
+      - 'Dockerfile'
+      - 'requirements.txt'
+      - 'huggingface.yml'
+      - '.github/workflows/deploy.yml'
 
 jobs:
   deploy:
