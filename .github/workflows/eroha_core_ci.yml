@@ -6,6 +6,9 @@ on:
   schedule:
     - cron: '0 9 * * *' # запуск каждый день в 09:00 UTC
 
+permissions:
+  contents: write  # 👈 разрешаем боту пушить теги и создавать релизы
+
 jobs:
   validate-core:
     name: 🧩 Проверка структуры проекта
@@ -112,12 +115,28 @@ jobs:
           echo "" >> $GITHUB_ENV
           echo "EOF" >> $GITHUB_ENV
 
-      - name: 🏷️ Создаём новый тег
+      - name: 📂 Список изменённых файлов с прошлого тега
+        id: changed_files
         run: |
-          git config user.name "github-actions"
+          PREV_TAG=$(git tag --sort=-v:refname | sed -n 2p)
+          echo "PREV_TAG=$PREV_TAG" >> $GITHUB_ENV
+          echo "CHANGED_FILES<<EOF" >> $GITHUB_ENV
+          if [ -z "$PREV_TAG" ]; then
+            git diff --name-only HEAD~10 >> $GITHUB_ENV
+          else
+            git diff --name-only $PREV_TAG HEAD >> $GITHUB_ENV
+          fi
+          echo "" >> $GITHUB_ENV
+          echo "EOF" >> $GITHUB_ENV
+
+      - name: 🏷️ Создаём новый тег
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          git config user.name "github-actions[bot]"
           git config user.email "actions@github.com"
           git tag $NEW_TAG
-          git push origin $NEW_TAG
+          git push https://x-access-token:${GITHUB_TOKEN}@github.com/${{ github.repository }}.git $NEW_TAG
 
       - name: 🚀 Публикуем релиз на GitHub
         uses: softprops/action-gh-release@v2
@@ -131,8 +150,11 @@ jobs:
             🇰🇿 **Релиз сипаттамасы**
             Eroha Core ядросының жаңа нұсқасы. CI/CD жақсартылды, нұсқалар және өзгерістер тізімі автоматты түрде жасалады.
 
-            🧩 **Изменения (Changelog)**  
+            🧩 **Изменения (Changelog)**
             ${{ env.CHANGELOG }}
+
+            📂 **Изменённые файлы**
+            ${{ env.CHANGED_FILES }}
 
             🗓️ Дата релиза: ${{ github.event.head_commit.timestamp }}
             👤 Автор: ${{ github.actor }}
