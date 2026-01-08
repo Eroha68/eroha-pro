@@ -6,3 +6,11 @@ rules:
     level: warning
   truthy:
     level: warning
+  brackets:
+    level: warning
+  indentation:
+    level: warning
+  trailing-spaces:
+    level: warning
+  document-start:
+    present: false
