@@ -1,0 +1,49 @@
+name: 🚀 Auto Deploy to Hugging Face Space
+
+on:
+  push:
+    branches: [main]
+
+jobs:
+  deploy:
+    name: 🔄 Redeploy Hugging Face Space with Changelog
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: 📥 Checkout repository
+        uses: actions/checkout@v4
+
+      - name: 🕓 Generate changelog (last 10 commits)
+        id: changelog
+        run: |
+          echo "📝 Generating changelog..."
+          echo "### 📅 Последние 10 коммитов" > changelog.md
+          git log -10 --pretty=format:'- %ad • `%h` — %s' --date=format:'%Y-%m-%d %H:%M' >> changelog.md
+          echo "" >> changelog.md
+          echo "### 📂 Изменённые файлы" >> changelog.md
+          git diff --name-only HEAD~1 HEAD | sed 's/^/- /' >> changelog.md
+          echo "" >> changelog.md
+          cat changelog.md
+          echo "CHANGELOG<<EOF" >> $GITHUB_ENV
+          cat changelog.md >> $GITHUB_ENV
+          echo "EOF" >> $GITHUB_ENV
+
+      - name: 🔐 Authenticate with Hugging Face
+        run: |
+          echo "machine huggingface.co login ${{ secrets.HF_TOKEN }}" > ~/.netrc
+
+      - name: 🚀 Trigger Space rebuild
+        run: |
+          echo "=============================================="
+          echo "🔁 Redeploying Hugging Face Space: Eroha Agent"
+          echo "=============================================="
+          curl -X POST \
+            -H "Authorization: Bearer ${{ secrets.HF_TOKEN }}" \
+            https://huggingface.co/api/spaces/Yermek68/eroha-agentapi/restart
+          echo ""
+          echo "✅ Redeploy triggered successfully!"
+          echo ""
+          echo "=============================================="
+          echo "📜 CHANGELOG"
+          echo "=============================================="
+          echo "${{ env.CHANGELOG }}"
