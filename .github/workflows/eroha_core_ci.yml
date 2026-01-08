@@ -107,9 +107,11 @@ jobs:
       - name: 🧾 Генерация changelog (последние 10 коммитов)
         id: changelog
         run: |
-          echo "CHANGELOG<<EOF" >> $GITHUB_ENV
-          git log -n 10 --pretty=format:"- %s (%an)" >> $GITHUB_ENV
-          echo "EOF" >> $GITHUB_ENV
+          {
+            echo "CHANGELOG<<EOF"
+            git log -n 10 --pretty=format:"- %s (%an)"
+            echo "EOF"
+          } >> $GITHUB_ENV
 
       - name: 🏷️ Создаём новый тег
         run: |
