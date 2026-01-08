@@ -6,44 +6,42 @@ on:
 
 jobs:
   deploy:
-    name: 🔄 Redeploy Hugging Face Space with Changelog
+    name: 🚀 Redeploy Hugging Face Space with Changelog
     runs-on: ubuntu-latest
 
     steps:
-      - name: 📥 Checkout repository
+      - name: 📦 Checkout repository
         uses: actions/checkout@v4
 
-      - name: 🕓 Generate changelog (last 10 commits)
+      - name: 📝 Generate changelog (last 10 commits)
         id: changelog
         run: |
-          echo "📝 Generating changelog..."
-          echo "### 📅 Последние 10 коммитов" > changelog.md
-          git log -10 --pretty=format:'- %ad • `%h` — %s' --date=format:'%Y-%m-%d %H:%M' >> changelog.md
-          echo "" >> changelog.md
-          echo "### 📂 Изменённые файлы" >> changelog.md
+          echo "🧱 Generating changelog..."
+          echo "### 🕒 Последние 10 коммитов" > changelog.md
+          git log -10 --pretty=format:'- `%ad` — %h — %s' --date=format:'%Y-%m-%d %H:%M' >> changelog.md
+          echo -e "\n\n### 📂 Изменённые файлы" >> changelog.md
           git diff --name-only HEAD~1 HEAD | sed 's/^/- /' >> changelog.md
-          echo "" >> changelog.md
-          cat changelog.md
-          echo "CHANGELOG<<EOF" >> $GITHUB_ENV
-          cat changelog.md >> $GITHUB_ENV
-          echo "EOF" >> $GITHUB_ENV
 
-      - name: 🔐 Authenticate with Hugging Face
+      - name: 🔄 Redeploy to Hugging Face Space
+        env:
+          HF_TOKEN: ${{ secrets.HF_TOKEN }}
         run: |
-          echo "machine huggingface.co login ${{ secrets.HF_TOKEN }}" > ~/.netrc
+          echo "🔑 Authenticating with Hugging Face..."
+          git config --global user.email "actions@github.com"
+          git config --global user.name "GitHub Actions"
+          
+          echo "🚀 Cloning target Space..."
+          git clone https://github.com/Eroha68/eroha-pro.git repo
+          cd repo
+          
+          echo "🧩 Updating Space repository..."
+          rm -rf ./*
+          cp -r ../* ./
+          
+          echo "⚙️ Deploying to Hugging Face Space..."
+          git add .
+          git commit -m "Auto deploy from GitHub CI ($(date '+%Y-%m-%d %H:%M'))"
+          git push https://Yermek68:${HF_TOKEN}@huggingface.co/spaces/Yermek68/eroha-agentapi main
 
-      - name: 🚀 Trigger Space rebuild
-        run: |
-          echo "=============================================="
-          echo "🔁 Redeploying Hugging Face Space: Eroha Agent"
-          echo "=============================================="
-          curl -X POST \
-            -H "Authorization: Bearer ${{ secrets.HF_TOKEN }}" \
-            https://huggingface.co/api/spaces/Yermek68/eroha-agentapi/restart
-          echo ""
-          echo "✅ Redeploy triggered successfully!"
-          echo ""
-          echo "=============================================="
-          echo "📜 CHANGELOG"
-          echo "=============================================="
-          echo "${{ env.CHANGELOG }}"
+      - name: ✅ Complete
+        run: echo "🎉 Deployment finished successfully!"
