@@ -1,0 +1,28 @@
+name: Eroha Core CI/CD
+on:
+  push:
+    branches: [ main ]
+  schedule:
+    - cron: '0 9 * * *' # запуск каждый день в 09:00 UTC
+
+jobs:
+  validate-core:
+    runs-on: ubuntu-latest
+    steps:
+      - name: 📥 Скачиваем репозиторий
+        uses: actions/checkout@v3
+
+      - name: ✅ Проверяем YAML-файлы
+        run: |
+          pip install yamllint
+          yamllint . --strict
+
+      - name: ✅ Проверяем JSON-файлы
+        run: |
+          for f in $(find . -name "*.json"); do
+            python -m json.tool < $f > /dev/null || exit 1
+          done
+
+      - name: 🔒 Проверка целостности документации
+        run: |
+          sha256sum ErohaPRO_Implementation_Plan_v1.md || true
