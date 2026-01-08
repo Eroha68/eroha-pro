@@ -29,19 +29,18 @@ jobs:
           echo "🔑 Authenticating with Hugging Face..."
           git config --global user.email "actions@github.com"
           git config --global user.name "GitHub Actions"
-          
+
           echo "🚀 Cloning target Space..."
-          git clone https://github.com/Eroha68/eroha-pro.git repo
+          git clone https://Yermek68:${HF_TOKEN}@huggingface.co/spaces/Yermek68/eroha-agentapi repo
+
+          echo "🧩 Syncing files (excluding .git and CI configs)..."
+          rsync -av --delete --exclude '.git' --exclude '.github' --exclude 'repo' ./ ./repo/
+
           cd repo
-          
-          echo "🧩 Updating Space repository..."
-          rm -rf ./*
-          cp -r ../* ./
-          
-          echo "⚙️ Deploying to Hugging Face Space..."
+          echo "⚙️ Committing and pushing changes..."
           git add .
-          git commit -m "Auto deploy from GitHub CI ($(date '+%Y-%m-%d %H:%M'))"
-          git push https://Yermek68:${HF_TOKEN}@huggingface.co/spaces/Yermek68/eroha-agentapi main
+          git commit -m "🚀 Auto-deploy from GitHub CI ($(date '+%Y-%m-%d %H:%M'))" || echo "No changes to commit"
+          git push origin main
 
       - name: ✅ Complete
         run: echo "🎉 Deployment finished successfully!"
