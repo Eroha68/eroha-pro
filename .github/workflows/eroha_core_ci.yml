@@ -87,7 +87,7 @@ jobs:
       - name: 📥 Скачиваем репозиторий с тэгами
         uses: actions/checkout@v4
         with:
-          fetch-depth: 0  # нужно для git tag
+          fetch-depth: 0
 
       - name: 🧮 Генерируем новый номер версии
         id: version
@@ -104,14 +104,13 @@ jobs:
           echo "NEW_TAG=$NEW_TAG" >> $GITHUB_ENV
           echo "🔖 Новая версия: $NEW_TAG"
 
-      - name: 🧾 Генерация changelog (последние 10 коммитов)
+      - name: 🧾 Генерация changelog (10 последних коммитов)
         id: changelog
         run: |
-          {
-            echo "CHANGELOG<<EOF"
-            git log -n 10 --pretty=format:"- %s (%an)"
-            echo "EOF"
-          } >> $GITHUB_ENV
+          echo "CHANGELOG<<EOF" >> $GITHUB_ENV
+          git log -n 10 --pretty=format:"- %s (%an, %ad, %h)" --date=short >> $GITHUB_ENV
+          echo "" >> $GITHUB_ENV
+          echo "EOF" >> $GITHUB_ENV
 
       - name: 🏷️ Создаём новый тег
         run: |
