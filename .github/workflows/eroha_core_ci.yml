@@ -3,8 +3,12 @@ name: Eroha Core CI/CD
 on:
   push:
     branches: [ main ]
+
+  pull_request:
+    branches: [ main ]
+
   schedule:
-    - cron: '0 9 * * *' # запуск каждый день в 09:00 UTC
+    - cron: '0 9 * * *'
 
 permissions:
   contents: write  # 👈 разрешаем боту пушить теги и создавать релизы
