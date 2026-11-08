@@ -52,7 +52,7 @@ jobs:
       - name: 🔄 Sync changes to Space
         run: |
           echo "⚙️ Syncing repository contents..."
-          rsync -av --delete --exclude='.git' --exclude='.github' ./ repo/
+          rsync -av --delete --exclude='.git' --exclude='.github' --exclude='/repo/' ./ repo/
 
       # === 6️⃣ Commit & Push ===
       - name: 🚀 Deploy to Hugging Face Space
