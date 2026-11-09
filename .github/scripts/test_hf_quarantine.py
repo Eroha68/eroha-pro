@@ -33,11 +33,15 @@ def validate_contract(source: str) -> list[str]:
         ("SKIP_AS_SUCCESS", r"(?m)^\s+if:\s*(?:false|\$\{\{\s*false\s*\}\})"),
         ("ERROR_SUPPRESSION", r"continue-on-error\s*:\s*true|\|\|\s*true"),
         ("MANUAL_TRIGGER", r"(?m)^\s+workflow_dispatch\s*:"),
+        ("PATH_FILTER", r"(?m)^\s+paths(?:-ignore)?\s*:"),
+        ("CONDITIONAL_HOLD", r"(?m)^\s+if\s*:"),
         ("QUIET_EXIT", r"(?m)^\s+exit\s+0\s*$"),
     ]
     for name, pattern in forbidden:
         if re.search(pattern, source, re.IGNORECASE):
             failures.append(name)
+    if not re.search(r"(?m)^on:\n  push:\n    branches:\n      - main\n", source):
+        failures.append("MISSING_MAIN_PUSH_TRIGGER")
     if source.count("\n  release-quarantine:") != 1:
         failures.append("INCORRECT_JOB_COUNT")
     if source.count("\n        run: |") != 1:
@@ -93,8 +97,35 @@ class FailClosedHuggingFaceContract(unittest.TestCase):
                       validate_contract(self.source + "\n  workflow_dispatch:\n"))
 
     def test_skip_as_success_is_rejected(self) -> None:
-        self.assertIn("SKIP_AS_SUCCESS",
-                      validate_contract(self.source + "\n    if: false\n"))
+        failures = validate_contract(self.source + "\n    if: false\n")
+        self.assertIn("SKIP_AS_SUCCESS", failures)
+        self.assertIn("CONDITIONAL_HOLD", failures)
+
+    def test_push_path_filter_rejected(self) -> None:
+        mutant = self.source.replace(
+            "    branches:\n      - main\n",
+            "    branches:\n      - main\n    paths:\n      - app.py\n",
+        )
+        self.assertIn("PATH_FILTER", validate_contract(mutant))
+
+    def test_push_paths_ignore_rejected(self) -> None:
+        mutant = self.source.replace(
+            "    branches:\n      - main\n",
+            "    branches:\n      - main\n    paths-ignore:\n      - docs/**\n",
+        )
+        self.assertIn("PATH_FILTER", validate_contract(mutant))
+
+    def test_conditional_guardian_rejected(self) -> None:
+        mutant = self.source.replace(
+            "    timeout-minutes: 2\n",
+            "    timeout-minutes: 2\n    if: github.ref == 'refs/heads/main'\n",
+        )
+        self.assertIn("CONDITIONAL_HOLD", validate_contract(mutant))
+
+    def test_lost_main_push_trigger_rejected(self) -> None:
+        mutant = self.source.replace("      - main\n", "      - releases\n")
+        failures = validate_contract(mutant)
+        self.assertIn("MISSING_MAIN_PUSH_TRIGGER", failures)
 
     def test_continuation_after_errors_is_rejected(self) -> None:
         self.assertIn("ERROR_SUPPRESSION",
