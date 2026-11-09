@@ -1,0 +1,44 @@
+name: EROHA synthetic Guardian veto smoke (must fail, no deploy)
+on:
+  push:
+    branches:
+      - test/eroha-guardian-deny-20261110
+
+permissions:
+  contents: read
+
+jobs:
+  guardian-authorization:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 3
+    steps:
+      - name: Run exact candidate NO-GO guard
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "::error title=EROHA Guardian NO-GO::No independently signed, non-replayable release authorization from a separately controlled Guardian is configured."
+          exit 41
+  would-release:
+    needs: [guardian-authorization]
+    runs-on: ubuntu-24.04
+    steps:
+      - name: This step must NEVER execute
+        shell: bash
+        run: |
+          echo "::error::BLOCKED_RELEASE_JOB_RAN"
+          exit 99
+  audit-verdict:
+    needs: [guardian-authorization, would-release]
+    if: always()
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Assert explicit failure and dependent skip
+        env:
+          GUARDIAN_RESULT: ${{ needs.guardian-authorization.result }}
+          RELEASE_RESULT: ${{ needs.would-release.result }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$GUARDIAN_RESULT" = failure
+          test "$RELEASE_RESULT" = skipped
+          echo "GUARDIAN_VETO_INDEPENDENT_RESULT_CHECK=PASS"
