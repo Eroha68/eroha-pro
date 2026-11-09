@@ -65,3 +65,45 @@ jobs:
             exit 1
           fi
           echo 'ARTIFACT_TRANSFER_SMOKE=PASS'
+
+  negative-upload:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Attempt upload of absent file (must fail)
+        id: missing
+        uses: actions/upload-artifact@v4
+        continue-on-error: true
+        with:
+          name: EROHA_MISSING_UPLOAD
+          path: does-not-exist.zip
+          if-no-files-found: error
+      - name: Check missing upload was rejected
+        shell: bash
+        env:
+          ACTUAL_OUTCOME: ${{ steps.missing.outcome }}
+        run: |
+          set -euo pipefail
+          test "$ACTUAL_OUTCOME" = failure
+          echo 'UPLOAD_MISSING_REJECTED=PASS'
+
+  negative-download:
+    needs: build
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Attempt download of absent artifact (must fail)
+        id: missing
+        uses: actions/download-artifact@v4
+        continue-on-error: true
+        with:
+          name: EROHA_DOES_NOT_EXIST
+          path: artifacts
+      - name: Check missing download was rejected
+        shell: bash
+        env:
+          ACTUAL_OUTCOME: ${{ steps.missing.outcome }}
+        run: |
+          set -euo pipefail
+          test "$ACTUAL_OUTCOME" = failure
+          echo 'DOWNLOAD_MISSING_REJECTED=PASS'
