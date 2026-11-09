@@ -1,0 +1,67 @@
+name: EROHA artifact transfer smoke (no release)
+
+on:
+  push:
+    branches:
+      - test/eroha-artifact-transfer-20261109
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Build disposable sample ZIP
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p artifacts
+          printf 'EROHA_TRANSFER_SMOKE\n' > payload.txt
+          python3 - <<'PY'
+          from zipfile import ZipFile, ZIP_DEFLATED
+          with ZipFile('artifacts/ErohaSuite_Core.zip', 'w', ZIP_DEFLATED) as z:
+              z.write('payload.txt', arcname='payload.txt')
+          PY
+          unzip -t artifacts/ErohaSuite_Core.zip
+      - name: Upload synthetic artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ErohaSuite_Core_Build
+          path: artifacts/ErohaSuite_Core.zip
+          if-no-files-found: error
+          retention-days: 1
+
+  verify:
+    needs: build
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Download named artifact into release-relative path
+        uses: actions/download-artifact@v4
+        with:
+          name: ErohaSuite_Core_Build
+          path: artifacts
+      - name: Reject missing, corrupt and altered artifact
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -s artifacts/ErohaSuite_Core.zip
+          unzip -t artifacts/ErohaSuite_Core.zip
+          python3 - <<'PY'
+          from zipfile import ZipFile
+          with ZipFile('artifacts/ErohaSuite_Core.zip') as z:
+              assert z.namelist() == ['payload.txt']
+              assert z.read('payload.txt') == b'EROHA_TRANSFER_SMOKE\n'
+          PY
+          if test -s artifacts/does-not-exist.zip; then
+            echo 'FAIL: missing archive was accepted'
+            exit 1
+          fi
+          printf 'broken' > artifacts/damaged.zip
+          if unzip -t artifacts/damaged.zip >/dev/null 2>&1; then
+            echo 'FAIL: corrupted archive was accepted'
+            exit 1
+          fi
+          echo 'ARTIFACT_TRANSFER_SMOKE=PASS'
