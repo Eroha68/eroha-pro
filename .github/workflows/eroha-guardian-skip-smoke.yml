@@ -1,0 +1,55 @@
+name: EROHA Guardian skipped path negative smoke (no releases)
+on:
+  push:
+    branches:
+      - test/eroha-guardian-skip-false-pass-20261110
+permissions:
+  contents: read
+jobs:
+  eligibility:
+    runs-on: ubuntu-24.04
+    outputs:
+      should_release: ${{ steps.check.outputs.should_release }}
+    steps:
+      - id: check
+        shell: bash
+        run: echo 'should_release=false' >> "$GITHUB_OUTPUT"
+  build-archive:
+    needs: [eligibility]
+    if: needs.eligibility.outputs.should_release == 'true'
+    runs-on: ubuntu-24.04
+    steps:
+      - run: exit 99
+  guardian-authorization:
+    needs: [eligibility, build-archive]
+    if: needs.eligibility.outputs.should_release == 'true'
+    runs-on: ubuntu-24.04
+    steps:
+      - shell: bash
+        run: |
+          echo "::error::INDEPENDENT_GUARDIAN_ABSENT"
+          exit 41
+  would-release:
+    needs: [build-archive, eligibility, guardian-authorization]
+    if: needs.eligibility.outputs.should_release == 'true'
+    runs-on: ubuntu-24.04
+    steps:
+      - run: exit 99
+  audit-result:
+    needs: [eligibility, build-archive, guardian-authorization, would-release]
+    if: always()
+    runs-on: ubuntu-24.04
+    env:
+      RELEASE_ELIGIBILITY: ${{ needs.eligibility.outputs.should_release }}
+      BUILD_RESULT: ${{ needs.build-archive.result }}
+      GUARDIAN_RESULT: ${{ needs.guardian-authorization.result }}
+      RELEASE_RESULT: ${{ needs.would-release.result }}
+    steps:
+      - shell: bash
+        run: |
+          set -euo pipefail
+          test "$RELEASE_ELIGIBILITY" = false
+          test "$BUILD_RESULT" = skipped
+          test "$GUARDIAN_RESULT" = skipped
+          test "$RELEASE_RESULT" = skipped
+          echo "GUARDIAN_SKIPPED_FALSE_GREEN_REPRODUCED=PASS"
