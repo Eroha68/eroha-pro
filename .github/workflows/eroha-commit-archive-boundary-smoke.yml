@@ -1,0 +1,82 @@
+name: EROHA commit-only archive boundary smoke (no release)
+on:
+  push:
+    branches:
+      - test/eroha-commit-archive-boundary-20261110
+
+permissions:
+  contents: read
+
+jobs:
+  archive-boundary:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 6
+    steps:
+      - name: Checkout pinned synthetic test branch without stored token
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Run negative archive unit tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 -m unittest discover -s .github/scripts -p 'test_build_release_archive.py' -v
+          echo "ARCHIVE_UNIT_REGRESSION=PASS"
+
+      - name: Reproduce legacy untracked-file leakage in disposable fixture
+        shell: bash
+        run: |
+          set -euo pipefail
+          fixture="$(mktemp -d "$RUNNER_TEMP/eroha-legacy.XXXXXX")"
+          mkdir -p "$fixture/artifacts"
+          printf 'safe\n' > "$fixture/app.py"
+          printf 'SYNTHETIC_CANARY_NO_REAL_SECRET\n' > "$fixture/.env"
+          (
+            cd "$fixture"
+            zip -q -r artifacts/legacy.zip . -x "*.git*" ".github/*" "__pycache__/*"
+          )
+          python3 - "$fixture/artifacts/legacy.zip" <<'PY'
+          import sys, zipfile
+          with zipfile.ZipFile(sys.argv[1]) as z:
+              names = {x.lstrip('./') for x in z.namelist()}
+          assert '.env' in names, names
+          print("LEGACY_UNTRACKED_LEAK_REPRODUCED=PASS")
+          PY
+
+      - name: Build real branch candidate solely from pinned commit
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          python3 .github/scripts/build_release_archive.py \
+            --repo . --commit "$GITHUB_SHA" --output artifacts/ErohaSuite_Core.zip
+          test -s artifacts/ErohaSuite_Core.zip
+          unzip -t artifacts/ErohaSuite_Core.zip
+          python3 - <<'PY'
+          import zipfile
+          with zipfile.ZipFile('artifacts/ErohaSuite_Core.zip') as z:
+              names = z.namelist()
+          assert names, 'empty archive'
+          assert all(not p.startswith(('.github/', 'artifacts/')) for p in names), names
+          assert all('.env' not in p.split('/') for p in names), names
+          assert len(names) == len(set(names)), 'duplicate ZIP names'
+          print("PINNED_REPOSITORY_ARCHIVE=PASS", len(names))
+          PY
+
+      - name: Prove repeatable ZIP and wrong-SHA rejection
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 .github/scripts/build_release_archive.py \
+            --repo . --commit "$GITHUB_SHA" --output artifacts/ErohaSuite_Second.zip
+          cmp artifacts/ErohaSuite_Core.zip artifacts/ErohaSuite_Second.zip
+          echo "DETERMINISTIC_BUILD=PASS"
+          if python3 .github/scripts/build_release_archive.py \
+            --repo . --commit 0000000000000000000000000000000000000000 \
+            --output artifacts/invalid.zip; then
+            echo "::error::Wrong source SHA was accepted"
+            exit 1
+          fi
+          test ! -e artifacts/invalid.zip
+          echo "MISMATCHED_COMMIT_PIN_REJECTED=PASS"
