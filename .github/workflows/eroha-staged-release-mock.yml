@@ -75,7 +75,14 @@ jobs:
           cat > "$RUNNER_TEMP/eroha-mockbin/git" <<'MOCK_GIT'
           #!/bin/bash
           set -euo pipefail
-          if [[ "${1:-}" == "ls-remote" && "${2:-}" == "--tags" ]]; then
+          if [[ "${1:-}" == "ls-remote" && "${2:-}" == "--exit-code" && "${3:-}" == "--tags" ]]; then
+            if test -e "$MOCK_DIR/remote_query_error"; then exit 128; fi
+            if test -e "$MOCK_DIR/preexisting_remote_tag"; then
+              printf '%s\trefs/tags/%s\n' "$GITHUB_SHA" "$NEW_TAG"
+              exit 0
+            fi
+            exit 2
+          elif [[ "${1:-}" == "ls-remote" && "${2:-}" == "--tags" ]]; then
             if test -e "$MOCK_DIR/published"; then
               printf '%s\trefs/tags/%s\n' "$GITHUB_SHA" "$NEW_TAG"
             fi
@@ -181,6 +188,19 @@ jobs:
           [[ "$NEW_TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]
           test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
           test -s artifacts/ErohaSuite_Core.zip
+          # gh release create --target is ignored if the remote tag already exists.
+          tag_probe_status=0
+          git ls-remote --exit-code --tags origin "refs/tags/$NEW_TAG" \
+            > "$RUNNER_TEMP/eroha-precreate-tag-check.txt" || tag_probe_status=$?
+          if [[ "$tag_probe_status" == 0 ]]; then
+            echo "::error::PREEXISTING_REMOTE_TAG_REJECTED"
+            exit 43
+          fi
+          if [[ "$tag_probe_status" != 2 ]]; then
+            echo "::error::REMOTE_TAG_QUERY_FAILED"
+            exit 44
+          fi
+          test ! -s "$RUNNER_TEMP/eroha-precreate-tag-check.txt"
           if gh release view "$NEW_TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
             echo "::error::RELEASE_TAG_ALREADY_HAS_RELEASE"
             exit 42
@@ -249,6 +269,20 @@ jobs:
           test ! -e "$MOCK_DIR/created"
           mv "$RUNNER_TEMP/held.zip" artifacts/ErohaSuite_Core.zip
           echo 'MISSING_ZIP_PREVENTED_DRAFT=PASS'
+          touch "$MOCK_DIR/preexisting_remote_tag"
+          tag_status=0
+          bash "$RUNNER_TEMP/stage.sh" || tag_status=$?
+          test "$tag_status" = 43
+          test ! -e "$MOCK_DIR/created"
+          rm "$MOCK_DIR/preexisting_remote_tag"
+          echo "PREEXISTING_REMOTE_TAG_REJECTED=PASS"
+          touch "$MOCK_DIR/remote_query_error"
+          query_status=0
+          bash "$RUNNER_TEMP/stage.sh" || query_status=$?
+          test "$query_status" = 44
+          test ! -e "$MOCK_DIR/created"
+          rm "$MOCK_DIR/remote_query_error"
+          echo "REMOTE_TAG_LOOKUP_ERROR_REJECTED=PASS"
           touch "$MOCK_DIR/create_fail"
           if bash "$RUNNER_TEMP/stage.sh"; then exit 11; fi
           test ! -e "$MOCK_DIR/created"
