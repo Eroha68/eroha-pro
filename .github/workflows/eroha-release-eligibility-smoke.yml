@@ -1,0 +1,63 @@
+name: EROHA release eligibility smoke (no releases)
+
+on:
+  push:
+    branches:
+      - test/eroha-release-eligibility-20261109
+
+permissions:
+  contents: read
+
+jobs:
+  eligibility:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Checkout full local history without persisted credentials
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Test exact proposed release eligibility script in disposable runner worktree
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat > "$RUNNER_TEMP/release_eligibility_guard.sh" <<'GUARD'
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          tags="$(git tag --points-at "$GITHUB_SHA")"
+          if printf '%s\n' "$tags" | grep -Eq '^v[0-9]+\.[0-9]+\.[0-9]+$'; then
+            echo "should_release=false" >> "$GITHUB_OUTPUT"
+            echo "RELEASE_ELIGIBILITY=SKIP_ALREADY_TAGGED"
+          else
+            echo "should_release=true" >> "$GITHUB_OUTPUT"
+            echo "RELEASE_ELIGIBILITY=NEW_SHA"
+          fi
+          GUARD
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          output1="$RUNNER_TEMP/unreleased.out"
+          GITHUB_OUTPUT="$output1" bash "$RUNNER_TEMP/release_eligibility_guard.sh"
+          grep -Fxq "should_release=true" "$output1"
+          echo "ELIGIBILITY_NEW_SHA=PASS"
+          git tag v987.0.1
+          output2="$RUNNER_TEMP/tagged.out"
+          GITHUB_OUTPUT="$output2" bash "$RUNNER_TEMP/release_eligibility_guard.sh"
+          grep -Fxq "should_release=false" "$output2"
+          echo "ELIGIBILITY_TAGGED_SHA=PASS"
+          git tag -d v987.0.1
+          git tag preliminary-only
+          output3="$RUNNER_TEMP/nonsemver.out"
+          GITHUB_OUTPUT="$output3" bash "$RUNNER_TEMP/release_eligibility_guard.sh"
+          grep -Fxq "should_release=true" "$output3"
+          echo "ELIGIBILITY_NONSEMVER_TAG=PASS"
+          git config user.name "EROHA Synthetic Test"
+          git config user.email "ci-test@example.invalid"
+          git -c commit.gpgsign=false commit --allow-empty -qm "Synthetic second commit, local only"
+          output4="$RUNNER_TEMP/changed-head.out"
+          if GITHUB_OUTPUT="$output4" bash "$RUNNER_TEMP/release_eligibility_guard.sh"; then
+            echo "::error::Mismatched checkout SHA was incorrectly accepted"
+            exit 1
+          fi
+          test ! -e "$output4"
+          echo "ELIGIBILITY_SHA_MISMATCH_REJECTED=PASS"
+          echo "ELIGIBILITY_SMOKE=PASS"
