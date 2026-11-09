@@ -239,14 +239,14 @@ jobs:
         run: |
           set -euo pipefail
           [[ "$EXPECTED_ZIP_SHA256" =~ ^[0-9a-f]{64}$ ]]
-          release_json="$(gh release view "$NEW_TAG" --repo "$GITHUB_REPOSITORY" --json isDraft,assets)"
+          release_json="$(gh release view "$NEW_TAG" --repo "$GITHUB_REPOSITORY" --json isDraft,assets,targetCommitish,tagName)"
           printf '%s\n' "$release_json" | jq -e '
             .isDraft == true and
+            .tagName == env.NEW_TAG and
+            .targetCommitish == env.GITHUB_SHA and
             (.assets | length) == 1 and
             ([.assets[] | select(.name == "ErohaSuite_Core.zip" and .size > 0)] | length) == 1
           ' >/dev/null
-          remote_tag="$(git ls-remote --tags origin "refs/tags/$NEW_TAG" | awk 'NR==1 {print $1}')"
-          test "$remote_tag" = "$GITHUB_SHA"
           mkdir -p "$RUNNER_TEMP/eroha-release-verify"
           gh release download "$NEW_TAG" --repo "$GITHUB_REPOSITORY" \
             --pattern 'ErohaSuite_Core.zip' --dir "$RUNNER_TEMP/eroha-release-verify"
@@ -263,14 +263,14 @@ jobs:
         run: |
           set -euo pipefail
           [[ "$EXPECTED_ZIP_SHA256" =~ ^[0-9a-f]{64}$ ]]
-          release_json="$(gh release view "$NEW_TAG" --repo "$GITHUB_REPOSITORY" --json isDraft,assets)"
+          release_json="$(gh release view "$NEW_TAG" --repo "$GITHUB_REPOSITORY" --json isDraft,assets,targetCommitish,tagName)"
           printf '%s\n' "$release_json" | jq -e '
             .isDraft == true and
+            .tagName == env.NEW_TAG and
+            .targetCommitish == env.GITHUB_SHA and
             (.assets | length) == 1 and
             ([.assets[] | select(.name == "ErohaSuite_Core.zip" and .size > 0)] | length) == 1
           ' >/dev/null
-          remote_tag="$(git ls-remote --tags origin "refs/tags/$NEW_TAG" | awk 'NR==1 {print $1}')"
-          test "$remote_tag" = "$GITHUB_SHA"
           verify_dir="$(mktemp -d "$RUNNER_TEMP/eroha-final-verify.XXXXXX")"
           gh release download "$NEW_TAG" --repo "$GITHUB_REPOSITORY" \
             --pattern 'ErohaSuite_Core.zip' --dir "$verify_dir"
@@ -286,11 +286,15 @@ jobs:
         run: |
           set -euo pipefail
           gh release edit "$NEW_TAG" --repo "$GITHUB_REPOSITORY" --draft=false
-          release_json="$(gh release view "$NEW_TAG" --repo "$GITHUB_REPOSITORY" --json isDraft,assets)"
+          release_json="$(gh release view "$NEW_TAG" --repo "$GITHUB_REPOSITORY" --json isDraft,assets,targetCommitish,tagName)"
           printf '%s\n' "$release_json" | jq -e '
             .isDraft == false and
+            .tagName == env.NEW_TAG and
+            .targetCommitish == env.GITHUB_SHA and
             (.assets | length) == 1 and
             ([.assets[] | select(.name == "ErohaSuite_Core.zip" and .size > 0)] | length) == 1
           ' >/dev/null
+          published_tag="$(git ls-remote --tags origin "refs/tags/$NEW_TAG" | awk 'NR==1 {print $1}')"
+          test "$published_tag" = "$GITHUB_SHA"
           echo "PUBLISHED_RELEASE_ASSET_PRESENT_NOT_INDEPENDENTLY_ATTESTED"
 
