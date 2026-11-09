@@ -22,7 +22,7 @@ jobs:
       - run: exit 99
   guardian-authorization:
     needs: [eligibility, build-archive]
-    if: needs.eligibility.outputs.should_release == 'true'
+    if: always()
     runs-on: ubuntu-24.04
     steps:
       - shell: bash
@@ -50,6 +50,6 @@ jobs:
           set -euo pipefail
           test "$RELEASE_ELIGIBILITY" = false
           test "$BUILD_RESULT" = skipped
-          test "$GUARDIAN_RESULT" = skipped
+          test "$GUARDIAN_RESULT" = failure
           test "$RELEASE_RESULT" = skipped
-          echo "GUARDIAN_SKIPPED_FALSE_GREEN_REPRODUCED=PASS"
+          echo "GUARDIAN_VETO_WHEN_ELIGIBILITY_FALSE=PASS"
