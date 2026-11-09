@@ -1,0 +1,171 @@
+name: EROHA mocked staged release guard (no real publish)
+on:
+  push:
+    branches:
+      - test/eroha-staged-release-mock-20261110
+permissions:
+  contents: read
+jobs:
+  simulated_release:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Checkout without stored token
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Set up synthetic archive and stub GitHub CLI
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/eroha-mockbin" "$RUNNER_TEMP/eroha-mock" artifacts
+          echo "NEW_TAG=v999.0.0" >> "$GITHUB_ENV"
+          echo "MOCK_DIR=$RUNNER_TEMP/eroha-mock" >> "$GITHUB_ENV"
+          python3 - <<'PY'
+          from zipfile import ZipFile, ZIP_DEFLATED
+          with ZipFile('artifacts/ErohaSuite_Core.zip','w',ZIP_DEFLATED) as z:
+              z.writestr('synthetic.txt','EROHA MOCK ONLY')
+          PY
+          printf 'EXPECTED_ZIP_SHA256=%s\n' "$(sha256sum artifacts/ErohaSuite_Core.zip | cut -d ' ' -f1)" >> "$GITHUB_ENV"
+          printf 'Synthetic release notes\n' > "$RUNNER_TEMP/eroha-release-notes.md"
+          cat > "$RUNNER_TEMP/eroha-mockbin/gh" <<'MOCK_GH'
+          #!/bin/bash
+          set -euo pipefail
+          printf '%s\n' "$*" >> "$MOCK_DIR/calls.log"
+          case "$1:$2" in
+            release:view)
+              test -e "$MOCK_DIR/created" || exit 1
+              test ! -e "$MOCK_DIR/api_fail" || exit 7
+              if [[ " $* " == *" --json "* ]]; then
+                if test -e "$MOCK_DIR/published"; then
+                  echo '{"isDraft":false,"assets":[{"name":"ErohaSuite_Core.zip","size":101}]}'
+                else
+                  echo '{"isDraft":true,"assets":[{"name":"ErohaSuite_Core.zip","size":101}]}'
+                fi
+              fi
+              ;;
+            release:create)
+              test ! -e "$MOCK_DIR/created" || exit 9
+              test ! -e "$MOCK_DIR/create_fail" || exit 10
+              [[ " $* " == *" --draft"* ]] || exit 11
+              test "$3" = "artifacts/ErohaSuite_Core.zip"
+              touch "$MOCK_DIR/created"
+              ;;
+            release:download)
+              test -e "$MOCK_DIR/created"
+              dir=""
+              while (($#)); do
+                if [[ "$1" == "--dir" ]]; then shift; dir="$1"; fi
+                shift
+              done
+              test -n "$dir"; mkdir -p "$dir"
+              cp artifacts/ErohaSuite_Core.zip "$dir/ErohaSuite_Core.zip"
+              if test -e "$MOCK_DIR/tamper"; then printf 'x' >> "$dir/ErohaSuite_Core.zip"; fi
+              ;;
+            release:edit)
+              test -e "$MOCK_DIR/created"
+              test ! -e "$MOCK_DIR/edit_fail" || exit 13
+              [[ " $* " == *" --draft=false"* ]] || exit 14
+              touch "$MOCK_DIR/published"
+              ;;
+            *) echo "Unexpected gh invocation" >&2; exit 99;;
+          esac
+          MOCK_GH
+          cat > "$RUNNER_TEMP/eroha-mockbin/git" <<'MOCK_GIT'
+          #!/bin/bash
+          set -euo pipefail
+          if [[ "${1:-}" == "ls-remote" && "${2:-}" == "--tags" ]]; then
+            printf '%s\trefs/tags/%s\n' "$GITHUB_SHA" "$NEW_TAG"
+          else exec /usr/bin/git "$@"; fi
+          MOCK_GIT
+          chmod +x "$RUNNER_TEMP/eroha-mockbin/gh" "$RUNNER_TEMP/eroha-mockbin/git"
+          echo 'MOCK_SETUP=PASS'
+      - name: Run exact production candidate scripts against in-runner mocks
+        shell: bash
+        run: |
+          set -euo pipefail
+          export PATH="$RUNNER_TEMP/eroha-mockbin:$PATH"
+          test "$(command -v gh)" = "$RUNNER_TEMP/eroha-mockbin/gh"
+          test "$(command -v git)" = "$RUNNER_TEMP/eroha-mockbin/git"
+          cat > "$RUNNER_TEMP/stage.sh" <<'EROHA_STAGE'
+          set -euo pipefail
+          [[ "$NEW_TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          test -s artifacts/ErohaSuite_Core.zip
+          if gh release view "$NEW_TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo "::error::RELEASE_TAG_ALREADY_HAS_RELEASE"
+            exit 42
+          fi
+          gh release create "$NEW_TAG" artifacts/ErohaSuite_Core.zip \
+            --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" \
+            --title "Eroha Core Release $NEW_TAG" \
+            --notes-file "$RUNNER_TEMP/eroha-release-notes.md" --draft
+          echo "DRAFT_CREATED_NOT_PUBLISHED"
+          EROHA_STAGE
+          cat > "$RUNNER_TEMP/verify.sh" <<'EROHA_VERIFY'
+          set -euo pipefail
+          [[ "$EXPECTED_ZIP_SHA256" =~ ^[0-9a-f]{64}$ ]]
+          release_json="$(gh release view "$NEW_TAG" --repo "$GITHUB_REPOSITORY" --json isDraft,assets)"
+          printf '%s\n' "$release_json" | jq -e '
+            .isDraft == true and
+            (.assets | length) == 1 and
+            ([.assets[] | select(.name == "ErohaSuite_Core.zip" and .size > 0)] | length) == 1
+          ' >/dev/null
+          remote_tag="$(git ls-remote --tags origin "refs/tags/$NEW_TAG" | awk 'NR==1 {print $1}')"
+          test "$remote_tag" = "$GITHUB_SHA"
+          mkdir -p "$RUNNER_TEMP/eroha-release-verify"
+          gh release download "$NEW_TAG" --repo "$GITHUB_REPOSITORY" \
+            --pattern 'ErohaSuite_Core.zip' --dir "$RUNNER_TEMP/eroha-release-verify"
+          test -s "$RUNNER_TEMP/eroha-release-verify/ErohaSuite_Core.zip"
+          printf '%s  %s\n' "$EXPECTED_ZIP_SHA256" "$RUNNER_TEMP/eroha-release-verify/ErohaSuite_Core.zip" | sha256sum --check --status
+          unzip -t "$RUNNER_TEMP/eroha-release-verify/ErohaSuite_Core.zip"
+          echo "DRAFT_ASSET_VERIFIED_NOT_PUBLISHED"
+          EROHA_VERIFY
+          cat > "$RUNNER_TEMP/publish.sh" <<'EROHA_PUBLISH'
+          set -euo pipefail
+          gh release edit "$NEW_TAG" --repo "$GITHUB_REPOSITORY" --draft=false
+          release_json="$(gh release view "$NEW_TAG" --repo "$GITHUB_REPOSITORY" --json isDraft,assets)"
+          printf '%s\n' "$release_json" | jq -e '
+            .isDraft == false and
+            (.assets | length) == 1 and
+            ([.assets[] | select(.name == "ErohaSuite_Core.zip" and .size > 0)] | length) == 1
+          ' >/dev/null
+          echo "PUBLISHED_RELEASE_ASSET_PRESENT_NOT_INDEPENDENTLY_ATTESTED"
+          EROHA_PUBLISH
+          mv artifacts/ErohaSuite_Core.zip "$RUNNER_TEMP/held.zip"
+          if bash "$RUNNER_TEMP/stage.sh"; then exit 10; fi
+          test ! -e "$MOCK_DIR/created"
+          mv "$RUNNER_TEMP/held.zip" artifacts/ErohaSuite_Core.zip
+          echo 'MISSING_ZIP_PREVENTED_DRAFT=PASS'
+          touch "$MOCK_DIR/create_fail"
+          if bash "$RUNNER_TEMP/stage.sh"; then exit 11; fi
+          test ! -e "$MOCK_DIR/created"
+          rm "$MOCK_DIR/create_fail"
+          echo 'CREATE_ERROR_PREVENTED_DRAFT=PASS'
+          bash "$RUNNER_TEMP/stage.sh"
+          test -e "$MOCK_DIR/created"
+          test ! -e "$MOCK_DIR/published"
+          echo 'STAGED_DRAFT_ONLY=PASS'
+          touch "$MOCK_DIR/api_fail"
+          if bash "$RUNNER_TEMP/verify.sh"; then exit 12; fi
+          test ! -e "$MOCK_DIR/published"
+          rm "$MOCK_DIR/api_fail"
+          echo 'API_ERROR_BLOCKS_PUBLISH=PASS'
+          touch "$MOCK_DIR/tamper"
+          if bash "$RUNNER_TEMP/verify.sh"; then exit 13; fi
+          test ! -e "$MOCK_DIR/published"
+          rm "$MOCK_DIR/tamper"
+          echo 'TAMPERED_ASSET_BLOCKS_PUBLISH=PASS'
+          bash "$RUNNER_TEMP/verify.sh"
+          test ! -e "$MOCK_DIR/published"
+          echo 'VALID_DRAFT_ASSET_VERIFIED=PASS'
+          touch "$MOCK_DIR/edit_fail"
+          if bash "$RUNNER_TEMP/publish.sh"; then exit 14; fi
+          test ! -e "$MOCK_DIR/published"
+          rm "$MOCK_DIR/edit_fail"
+          echo 'PUBLISH_ERROR_PRESERVES_DRAFT=PASS'
+          bash "$RUNNER_TEMP/publish.sh"
+          test -e "$MOCK_DIR/published"
+          echo 'MOCK_PUBLISHED_AFTER_VERIFICATION=PASS'
+          echo 'EROHA_MOCK_STAGING=PASS'
