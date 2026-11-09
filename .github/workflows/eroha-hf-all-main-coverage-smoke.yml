@@ -1,0 +1,34 @@
+name: EROHA HF quarantine all-main coverage smoke (no deploy)
+on:
+  push:
+    branches:
+      - test/eroha-hf-full-coverage-20261110
+permissions:
+  contents: read
+jobs:
+  audit:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Checkout without persisted credentials
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Parse proposed production workflow
+        shell: bash
+        run: |
+          set -euo pipefail
+          ruby -ryaml -e 'YAML.parse(STDIN.read)' < .github/workflows/deploy.yml
+          echo "HF_QUARANTINE_YAML_PARSE=PASS"
+      - name: Check contract and negative mutations normally
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 -m unittest discover -s .github/scripts -p 'test_hf_quarantine.py' -v
+          echo "HF_ALL_MAIN_CONTRACT_REGRESSION=PASS"
+      - name: Repeat under optimized Python
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 -O -m unittest discover -s .github/scripts -p 'test_hf_quarantine.py' -v
+          echo "HF_ALL_MAIN_CONTRACT_OPTIMIZED=PASS"
