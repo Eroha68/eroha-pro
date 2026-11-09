@@ -26,16 +26,30 @@ jobs:
         with:
           fetch-depth: 0
           persist-credentials: false
-      - name: Check whether HEAD is already released
+      - name: Check whether HEAD is eligible and tagged release has an archive
         id: check
         shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
           test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
-          tags="$(git tag --points-at "$GITHUB_SHA")"
-          if printf '%s\n' "$tags" | grep -Eq '^v[0-9]+\.[0-9]+\.[0-9]+$'; then
+          tags="$(git tag --points-at "$GITHUB_SHA" --sort=-v:refname)"
+          matching_tag=""
+          while IFS= read -r tag; do
+            if [[ "$tag" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+              matching_tag="$tag"
+              break
+            fi
+          done <<< "$tags"
+          if [[ -n "$matching_tag" ]]; then
+            archive_assets="$(gh release view "$matching_tag" --repo "$GITHUB_REPOSITORY" --json assets,isDraft --jq 'if .isDraft then 0 else [.assets[] | select(.name == "ErohaSuite_Core.zip" and .size > 0)] | length end')"
+            if [[ "$archive_assets" != "1" ]]; then
+              echo "::error::TAGGED_RELEASE_WITHOUT_ARCHIVE_ASSET tag=$matching_tag count=$archive_assets"
+              exit 41
+            fi
             echo "should_release=false" >> "$GITHUB_OUTPUT"
-            echo "RELEASE_ELIGIBILITY=SKIP_ALREADY_TAGGED"
+            echo "RELEASE_ELIGIBILITY=SKIP_ASSET_PRESENT_NOT_ATTESTED"
           else
             echo "should_release=true" >> "$GITHUB_OUTPUT"
             echo "RELEASE_ELIGIBILITY=NEW_SHA"
