@@ -1,0 +1,63 @@
+name: EROHA release guard dependency smoke (no release)
+on:
+  push:
+    branches:
+      - test/eroha-release-eligibility-20261109
+permissions:
+  contents: read
+jobs:
+  eligibility:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    outputs:
+      should_release: ${{ steps.check.outputs.should_release }}
+    steps:
+      - name: Checkout for local tag fixture
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Simulate already released SHA with local-only tag
+        id: check
+        shell: bash
+        run: |
+          git tag v987.0.2
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          tags="$(git tag --points-at "$GITHUB_SHA")"
+          if printf '%s\n' "$tags" | grep -Eq '^v[0-9]+\.[0-9]+\.[0-9]+$'; then
+            echo "should_release=false" >> "$GITHUB_OUTPUT"
+            echo "RELEASE_ELIGIBILITY=SKIP_ALREADY_TAGGED"
+          else
+            echo "should_release=true" >> "$GITHUB_OUTPUT"
+            echo "RELEASE_ELIGIBILITY=NEW_SHA"
+          fi
+  would_build:
+    needs: [eligibility]
+    if: needs.eligibility.outputs.should_release == 'true'
+    runs-on: ubuntu-24.04
+    steps:
+      - run: exit 99
+  would_release:
+    needs: [would_build, eligibility]
+    if: needs.eligibility.outputs.should_release == 'true'
+    runs-on: ubuntu-24.04
+    steps:
+      - run: exit 98
+  verify_skips:
+    needs: [eligibility, would_build, would_release]
+    if: always()
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Check both jobs skipped
+        shell: bash
+        env:
+          ACTUAL_ELIGIBILITY: ${{ needs.eligibility.outputs.should_release }}
+          ACTUAL_BUILD: ${{ needs.would_build.result }}
+          ACTUAL_RELEASE: ${{ needs.would_release.result }}
+        run: |
+          set -euo pipefail
+          test "$ACTUAL_ELIGIBILITY" = false
+          test "$ACTUAL_BUILD" = skipped
+          test "$ACTUAL_RELEASE" = skipped
+          echo "DEPENDENCY_GATE_SKIPPED_BOTH=PASS"
