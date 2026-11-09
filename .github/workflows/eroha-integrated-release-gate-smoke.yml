@@ -65,12 +65,12 @@ jobs:
         run: |
           set -euo pipefail
           cat > "$RUNNER_TEMP/verify_eroha_archive.sh" <<'GUARD'
-set -euo pipefail
-[[ "$EXPECTED_ZIP_SHA256" =~ ^[0-9a-f]{64}$ ]]
-test -s artifacts/ErohaSuite_Core.zip
-printf '%s  %s\n' "$EXPECTED_ZIP_SHA256" artifacts/ErohaSuite_Core.zip | sha256sum --check --status
-unzip -t artifacts/ErohaSuite_Core.zip
-test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          set -euo pipefail
+          [[ "$EXPECTED_ZIP_SHA256" =~ ^[0-9a-f]{64}$ ]]
+          test -s artifacts/ErohaSuite_Core.zip
+          printf '%s  %s\n' "$EXPECTED_ZIP_SHA256" artifacts/ErohaSuite_Core.zip | sha256sum --check --status
+          unzip -t artifacts/ErohaSuite_Core.zip
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
           GUARD
           bash "$RUNNER_TEMP/verify_eroha_archive.sh"
           echo "VALID_ARCHIVE_SHA256=PASS"
