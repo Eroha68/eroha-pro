@@ -66,6 +66,12 @@ jobs:
           pip install yamllint
           yamllint . || true
 
+      - name: Reject archive leaks and unsafe committed entries
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 -m unittest discover -s .github/scripts -p 'test_build_release_archive.py' -v
+
       - name: ✅ Проверяем JSON-файлы
         run: |
           for f in $(find . -name "*.json"); do
@@ -119,10 +125,15 @@ jobs:
       - name: 📥 Скачиваем репозиторий
         uses: actions/checkout@v4
 
-      - name: 🗜️ Создаём архив ядра
+      - name: Build pinned release archive from Git blobs only
+        shell: bash
         run: |
-          mkdir -p artifacts
-          zip -r artifacts/ErohaSuite_Core.zip . -x "*.git*" ".github/*" "__pycache__/*"
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          python3 .github/scripts/build_release_archive.py \
+            --repo . --commit "$GITHUB_SHA" --output artifacts/ErohaSuite_Core.zip
+          test -s artifacts/ErohaSuite_Core.zip
+          unzip -t artifacts/ErohaSuite_Core.zip
 
       - name: Capture trusted job-local SHA-256 of release ZIP
         id: checksum
