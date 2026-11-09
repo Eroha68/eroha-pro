@@ -246,6 +246,14 @@ jobs:
           bash "$RUNNER_TEMP/verify.sh"
           test ! -e "$MOCK_DIR/published"
           echo 'VALID_DRAFT_ASSET_VERIFIED=PASS'
+          touch "$MOCK_DIR/tamper"
+          if bash "$RUNNER_TEMP/publish.sh"; then
+            echo "::error::POST_VERIFICATION_TAMPER_WAS_PUBLISHED"
+            exit 91
+          fi
+          test ! -e "$MOCK_DIR/published"
+          rm "$MOCK_DIR/tamper"
+          echo 'POST_VERIFICATION_TAMPER_REJECTED=PASS'
           touch "$MOCK_DIR/edit_fail"
           if bash "$RUNNER_TEMP/publish.sh"; then exit 14; fi
           test ! -e "$MOCK_DIR/published"
