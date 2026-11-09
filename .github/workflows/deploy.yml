@@ -1,99 +1,33 @@
-name: 🚀 Auto Deploy to Hugging Face Space (Production Ready)
+# Emergency fail-closed candidate. Intentionally DOES NOT deploy.
+# Production roll-out requires owner approval plus separate Guardian and credential changes.
+name: EROHA HF deployment blocked pending independent Guardian
 
 on:
   push:
-    branches: [main]
-    # 🔍 Триггерится только при изменении ключевых файлов
+    branches:
+      - main
     paths:
-      - "app.py"
-      - "src/**"
-      - "requirements.txt"
-      - ".github/workflows/deploy.yml"
+      - app.py
+      - src/**
+      - requirements.txt
+      - .github/workflows/deploy.yml
+
+permissions:
+  contents: read
+
+concurrency:
+  group: eroha-hf-quarantine-${{ github.ref }}
+  cancel-in-progress: false
 
 jobs:
-  deploy:
-    name: 🧠 Smart Redeploy with Tests, Health Check & Alerts
-    runs-on: ubuntu-latest
-
+  release-quarantine:
+    name: HF deploy blocked - no independent authorization
+    runs-on: ubuntu-24.04
+    timeout-minutes: 2
     steps:
-      # === 1️⃣ Checkout репозитория ===
-      - name: 📦 Checkout repository
-        uses: actions/checkout@v4
-
-      # === 2️⃣ Генерация changelog ===
-      - name: 📝 Generate changelog (last 10 commits)
-        id: changelog
+      - name: Explicit fail-closed status (no checkout, secrets, network or deployment)
+        shell: bash
         run: |
-          echo "🧱 Generating changelog..."
-          echo "### 🕒 Последние 10 коммитов" > changelog.md
-          git log -10 --pretty=format:'- `%ad` — %h — %s' --date=format:'%Y-%m-%d %H:%M' >> changelog.md
-          echo -e "\n\n### 📂 Изменённые файлы" >> changelog.md
-          git diff --name-only HEAD~1 HEAD | sed 's/^/- /' >> changelog.md
-
-      # === 3️⃣ Pre-deploy sanity check ===
-      - name: 🧪 Run sanity checks
-        run: |
-          echo "🧩 Running syntax and dependency checks..."
-          python3 -m py_compile app.py || { echo "❌ Syntax error in app.py"; exit 1; }
-          pip install -r requirements.txt
-          echo "✅ Python syntax and dependencies OK."
-
-      # === 4️⃣ Клонирование Hugging Face Space ===
-      - name: 🔑 Clone target Space
-        env:
-          HF_TOKEN: ${{ secrets.HF_TOKEN }}
-        run: |
-          echo "🔐 Authenticating with Hugging Face..."
-          git config --global user.email "actions@github.com"
-          git config --global user.name "GitHub Actions"
-          git clone https://Yermek68:${HF_TOKEN}@huggingface.co/spaces/Yermek68/eroha-agentapi repo
-
-      # === 5️⃣ Синхронизация с rsync ===
-      - name: 🔄 Sync changes to Space
-        run: |
-          echo "⚙️ Syncing repository contents..."
-          rsync -av --delete --exclude='.git' --exclude='.github' ./ repo/
-
-      # === 6️⃣ Commit & Push ===
-      - name: 🚀 Deploy to Hugging Face Space
-        env:
-          HF_TOKEN: ${{ secrets.HF_TOKEN }}
-        run: |
-          cd repo
-          git add .
-          git commit -m "Auto deploy from GitHub CI ($(date '+%Y-%m-%d %H:%M'))" || echo "🟡 No changes to commit."
-          git push https://Yermek68:${HF_TOKEN}@huggingface.co/spaces/Yermek68/eroha-agentapi main
-          echo "✅ Deployment pushed successfully."
-
-      # === 7️⃣ Health Check ===
-      - name: 🩺 Verify Space Health
-        run: |
-          echo "🔍 Checking if Hugging Face Space is live..."
-          sleep 30
-          STATUS=$(curl -s -o /dev/null -w "%{http_code}" https://huggingface.co/spaces/Yermek68/eroha-agentapi)
-          if [ "$STATUS" != "200" ]; then
-            echo "❌ Space returned status $STATUS"
-            echo "Deployment failed." > deploy_status.txt
-            exit 1
-          else
-            echo "✅ Space responded with 200 OK"
-            echo "Deployment succeeded." > deploy_status.txt
-          fi
-
-      # === 8️⃣ Telegram Notification ===
-      - name: 📢 Notify Telegram
-        if: always()  # отправляется даже при сбое
-        env:
-          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
-          ALLOWED_USER_ID: ${{ secrets.ALLOWED_USER_ID }}
-        run: |
-          echo "📨 Sending Telegram notification..."
-          MESSAGE=$(cat deploy_status.txt || echo "⚠️ Deployment status unknown")
-          curl -s -X POST https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage \
-              -d chat_id=${ALLOWED_USER_ID} \
-              -d text="🔔 *Hugging Face Deploy Report*\n\n${MESSAGE}\n\n$(cat changelog.md)" \
-              -d parse_mode="Markdown"
-
-      # === 9️⃣ Завершение ===
-      - name: ✅ Complete
-        run: echo "🎉 Deployment pipeline finished."
+          set -euo pipefail
+          echo "::error title=EROHA HF deployment NO-GO::Direct Hugging Face deploy is disabled until independent Guardian approval, protected environment, and credential rotation are independently verified."
+          exit 41
