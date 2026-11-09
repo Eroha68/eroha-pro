@@ -174,73 +174,96 @@ jobs:
           unzip -t artifacts/ErohaSuite_Core.zip
           test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
 
-      - name: 🧮 Генерируем новый номер версии
-        id: version
+      - name: Prepare release version and notes without environment-file injection
+        shell: bash
         run: |
-          TAG=$(git tag --sort=-v:refname | head -n 1)
-          if [ -z "$TAG" ]; then
-            NEW_TAG="v1.0.0"
-          else
-            BASE=${TAG#v}
-            IFS='.' read -r MAJOR MINOR PATCH <<< "$BASE"
-            PATCH=$((PATCH + 1))
-            NEW_TAG="v${MAJOR}.${MINOR}.${PATCH}"
-          fi
-          echo "NEW_TAG=$NEW_TAG" >> $GITHUB_ENV
-          echo "🔖 Новая версия: $NEW_TAG"
+          set -euo pipefail
+          python3 - <<'PY'
+          import os, pathlib, re, subprocess
+          def git(*args):
+              return subprocess.check_output(['git', *args], text=True)
+          head = git('rev-parse','HEAD').strip()
+          assert head == os.environ['GITHUB_SHA'], 'CHECKOUT_SHA_MISMATCH'
+          entries = []
+          for tag in git('tag','--list').splitlines():
+              match = re.fullmatch(r'v([0-9]+)\.([0-9]+)\.([0-9]+)', tag)
+              if match:
+                  entries.append((tuple(map(int, match.groups())), tag))
+          entries.sort()
+          previous = entries[-1][1] if entries else None
+          major, minor, patch = entries[-1][0] if entries else (1, 0, -1)
+          new_tag = f'v{major}.{minor}.{patch+1}'
+          assert re.fullmatch(r'v[0-9]+\.[0-9]+\.[0-9]+', new_tag)
+          if subprocess.run(['git','show-ref','--verify','--quiet',f'refs/tags/{new_tag}']).returncode == 0:
+              raise SystemExit('TAG_ALREADY_EXISTS')
+          with open(os.environ['GITHUB_ENV'],'a',encoding='utf-8') as env:
+              env.write(f'NEW_TAG={new_tag}\n')
+          log = git('log','-n','10','--pretty=format:- %s (%an, %ad, %h)','--date=short')
+          changed = git('diff','--name-only',previous,'HEAD') if previous else git('ls-files')
+          notes = ('🇷🇺 Описание релиза\nНовая версия ядра Eroha Core.\n\n'
+                   '🇰🇿 Релиз сипаттамасы\nEroha Core ядросының жаңа нұсқасы.\n\n'
+                   'Изменения (Changelog)\n',log,'\n\nИзменённые файлы\n',changed)
+          notes_path = pathlib.Path(os.environ['RUNNER_TEMP']) / 'eroha-release-notes.md'
+          notes_path.write_text(''.join(notes),encoding='utf-8')
+          assert notes_path.stat().st_size > 0
+          print('RELEASE_CANDIDATE_NOT_PUBLISHED', new_tag)
+          PY
 
-      - name: 🧾 Генерация changelog (10 последних коммитов)
-        id: changelog
-        run: |
-          echo "CHANGELOG<<EOF" >> $GITHUB_ENV
-          git log -n 10 --pretty=format:"- %s (%an, %ad, %h)" --date=short >> $GITHUB_ENV
-          echo "" >> $GITHUB_ENV
-          echo "EOF" >> $GITHUB_ENV
-
-      - name: 📂 Список изменённых файлов с прошлого тега
-        id: changed_files
-        run: |
-          PREV_TAG=$(git tag --sort=-v:refname | sed -n 2p)
-          echo "PREV_TAG=$PREV_TAG" >> $GITHUB_ENV
-          echo "CHANGED_FILES<<EOF" >> $GITHUB_ENV
-          if [ -z "$PREV_TAG" ]; then
-            git diff --name-only HEAD~10 >> $GITHUB_ENV
-          else
-            git diff --name-only $PREV_TAG HEAD >> $GITHUB_ENV
-          fi
-          echo "" >> $GITHUB_ENV
-          echo "EOF" >> $GITHUB_ENV
-
-      - name: 🏷️ Создаём новый тег
+      - name: Create unpublished draft with required archive
+        shell: bash
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ github.token }}
         run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "actions@github.com"
-          git tag $NEW_TAG
-          git push https://x-access-token:${GITHUB_TOKEN}@github.com/${{ github.repository }}.git $NEW_TAG
+          set -euo pipefail
+          [[ "$NEW_TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          test -s artifacts/ErohaSuite_Core.zip
+          if gh release view "$NEW_TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo "::error::RELEASE_TAG_ALREADY_HAS_RELEASE"
+            exit 42
+          fi
+          gh release create "$NEW_TAG" artifacts/ErohaSuite_Core.zip \
+            --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" \
+            --title "Eroha Core Release $NEW_TAG" \
+            --notes-file "$RUNNER_TEMP/eroha-release-notes.md" --draft
+          echo "DRAFT_CREATED_NOT_PUBLISHED"
 
-      - name: 🚀 Публикуем релиз на GitHub
-        uses: softprops/action-gh-release@v2
-        with:
-          tag_name: ${{ env.NEW_TAG }}
-          name: "Eroha Core Release ${{ env.NEW_TAG }}"
-          body: |
-            🇷🇺 **Описание релиза**
-            Новая версия ядра Eroha Core с улучшенной проверкой CI/CD, автогенерацией версий и changelog.
-
-            🇰🇿 **Релиз сипаттамасы**
-            Eroha Core ядросының жаңа нұсқасы. CI/CD жақсартылды, нұсқалар және өзгерістер тізімі автоматты түрде жасалады.
-
-            🧩 **Изменения (Changelog)**
-            ${{ env.CHANGELOG }}
-
-            📂 **Изменённые файлы**
-            ${{ env.CHANGED_FILES }}
-
-            🗓️ Дата релиза: ${{ github.event.head_commit.timestamp }}
-            👤 Автор: ${{ github.actor }}
-          files: artifacts/ErohaSuite_Core.zip
-          fail_on_unmatched_files: true
+      - name: Check draft, remote tag and downloaded asset before publication
+        shell: bash
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ github.token }}
+          EXPECTED_ZIP_SHA256: ${{ needs.build-archive.outputs.archive_sha256 }}
+        run: |
+          set -euo pipefail
+          [[ "$EXPECTED_ZIP_SHA256" =~ ^[0-9a-f]{64}$ ]]
+          release_json="$(gh release view "$NEW_TAG" --repo "$GITHUB_REPOSITORY" --json isDraft,assets)"
+          printf '%s\n' "$release_json" | jq -e '
+            .isDraft == true and
+            (.assets | length) == 1 and
+            ([.assets[] | select(.name == "ErohaSuite_Core.zip" and .size > 0)] | length) == 1
+          ' >/dev/null
+          remote_tag="$(git ls-remote --tags origin "refs/tags/$NEW_TAG" | awk 'NR==1 {print $1}')"
+          test "$remote_tag" = "$GITHUB_SHA"
+          mkdir -p "$RUNNER_TEMP/eroha-release-verify"
+          gh release download "$NEW_TAG" --repo "$GITHUB_REPOSITORY" \
+            --pattern 'ErohaSuite_Core.zip' --dir "$RUNNER_TEMP/eroha-release-verify"
+          test -s "$RUNNER_TEMP/eroha-release-verify/ErohaSuite_Core.zip"
+          printf '%s  %s\n' "$EXPECTED_ZIP_SHA256" "$RUNNER_TEMP/eroha-release-verify/ErohaSuite_Core.zip" | sha256sum --check --status
+          unzip -t "$RUNNER_TEMP/eroha-release-verify/ErohaSuite_Core.zip"
+          echo "DRAFT_ASSET_VERIFIED_NOT_PUBLISHED"
+
+      - name: Publish only after draft verification
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          gh release edit "$NEW_TAG" --repo "$GITHUB_REPOSITORY" --draft=false
+          release_json="$(gh release view "$NEW_TAG" --repo "$GITHUB_REPOSITORY" --json isDraft,assets)"
+          printf '%s\n' "$release_json" | jq -e '
+            .isDraft == false and
+            (.assets | length) == 1 and
+            ([.assets[] | select(.name == "ErohaSuite_Core.zip" and .size > 0)] | length) == 1
+          ' >/dev/null
+          echo "PUBLISHED_RELEASE_ASSET_PRESENT_NOT_INDEPENDENTLY_ATTESTED"
+
