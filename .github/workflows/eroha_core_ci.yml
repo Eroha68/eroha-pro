@@ -255,6 +255,30 @@ jobs:
           unzip -t "$RUNNER_TEMP/eroha-release-verify/ErohaSuite_Core.zip"
           echo "DRAFT_ASSET_VERIFIED_NOT_PUBLISHED"
 
+      - name: Recheck remote draft bytes immediately before publication
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          EXPECTED_ZIP_SHA256: ${{ needs.build-archive.outputs.archive_sha256 }}
+        run: |
+          set -euo pipefail
+          [[ "$EXPECTED_ZIP_SHA256" =~ ^[0-9a-f]{64}$ ]]
+          release_json="$(gh release view "$NEW_TAG" --repo "$GITHUB_REPOSITORY" --json isDraft,assets)"
+          printf '%s\n' "$release_json" | jq -e '
+            .isDraft == true and
+            (.assets | length) == 1 and
+            ([.assets[] | select(.name == "ErohaSuite_Core.zip" and .size > 0)] | length) == 1
+          ' >/dev/null
+          remote_tag="$(git ls-remote --tags origin "refs/tags/$NEW_TAG" | awk 'NR==1 {print $1}')"
+          test "$remote_tag" = "$GITHUB_SHA"
+          verify_dir="$(mktemp -d "$RUNNER_TEMP/eroha-final-verify.XXXXXX")"
+          gh release download "$NEW_TAG" --repo "$GITHUB_REPOSITORY" \
+            --pattern 'ErohaSuite_Core.zip' --dir "$verify_dir"
+          test -s "$verify_dir/ErohaSuite_Core.zip"
+          printf '%s  %s\n' "$EXPECTED_ZIP_SHA256" "$verify_dir/ErohaSuite_Core.zip" | sha256sum --check --status
+          unzip -t "$verify_dir/ErohaSuite_Core.zip"
+          echo "FINAL_REMOTE_DRAFT_SHA256_VERIFIED"
+
       - name: Publish only after draft verification
         shell: bash
         env:
