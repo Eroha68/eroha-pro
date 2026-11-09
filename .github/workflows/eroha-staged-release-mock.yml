@@ -219,6 +219,25 @@ jobs:
           ' >/dev/null
           echo "PUBLISHED_RELEASE_ASSET_PRESENT_NOT_INDEPENDENTLY_ATTESTED"
           EROHA_PUBLISH
+          cat > "$RUNNER_TEMP/final.sh" <<'EROHA_FINAL'
+          set -euo pipefail
+          [[ "$EXPECTED_ZIP_SHA256" =~ ^[0-9a-f]{64}$ ]]
+          release_json="$(gh release view "$NEW_TAG" --repo "$GITHUB_REPOSITORY" --json isDraft,assets)"
+          printf '%s\n' "$release_json" | jq -e '
+            .isDraft == true and
+            (.assets | length) == 1 and
+            ([.assets[] | select(.name == "ErohaSuite_Core.zip" and .size > 0)] | length) == 1
+          ' >/dev/null
+          remote_tag="$(git ls-remote --tags origin "refs/tags/$NEW_TAG" | awk 'NR==1 {print $1}')"
+          test "$remote_tag" = "$GITHUB_SHA"
+          verify_dir="$(mktemp -d "$RUNNER_TEMP/eroha-final-verify.XXXXXX")"
+          gh release download "$NEW_TAG" --repo "$GITHUB_REPOSITORY" \
+            --pattern 'ErohaSuite_Core.zip' --dir "$verify_dir"
+          test -s "$verify_dir/ErohaSuite_Core.zip"
+          printf '%s  %s\n' "$EXPECTED_ZIP_SHA256" "$verify_dir/ErohaSuite_Core.zip" | sha256sum --check --status
+          unzip -t "$verify_dir/ErohaSuite_Core.zip"
+          echo "FINAL_REMOTE_DRAFT_SHA256_VERIFIED"
+          EROHA_FINAL
           mv artifacts/ErohaSuite_Core.zip "$RUNNER_TEMP/held.zip"
           if bash "$RUNNER_TEMP/stage.sh"; then exit 10; fi
           test ! -e "$MOCK_DIR/created"
@@ -247,13 +266,16 @@ jobs:
           test ! -e "$MOCK_DIR/published"
           echo 'VALID_DRAFT_ASSET_VERIFIED=PASS'
           touch "$MOCK_DIR/tamper"
-          if bash "$RUNNER_TEMP/publish.sh"; then
-            echo "::error::POST_VERIFICATION_TAMPER_WAS_PUBLISHED"
+          if bash "$RUNNER_TEMP/final.sh"; then
+            echo "::error::POST_VERIFICATION_TAMPER_PASSED_FINAL_CHECK"
             exit 91
           fi
           test ! -e "$MOCK_DIR/published"
           rm "$MOCK_DIR/tamper"
           echo 'POST_VERIFICATION_TAMPER_REJECTED=PASS'
+          bash "$RUNNER_TEMP/final.sh"
+          test ! -e "$MOCK_DIR/published"
+          echo 'FINAL_REMOTE_ASSET_SHA256_VERIFIED=PASS'
           touch "$MOCK_DIR/edit_fail"
           if bash "$RUNNER_TEMP/publish.sh"; then exit 14; fi
           test ! -e "$MOCK_DIR/published"
