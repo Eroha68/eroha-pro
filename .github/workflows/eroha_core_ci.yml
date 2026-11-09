@@ -7,7 +7,7 @@ on:
     - cron: '0 9 * * *' # запуск каждый день в 09:00 UTC
 
 permissions:
-  contents: write  # 👈 разрешаем боту пушить теги и создавать релизы
+  contents: read
 
 jobs:
   validate-core:
@@ -86,11 +86,27 @@ jobs:
     name: 🏁 Автоматическая публикация релиза
     runs-on: ubuntu-latest
     needs: [build-archive]
+    permissions:
+      contents: write
     steps:
       - name: 📥 Скачиваем репозиторий с тэгами
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
+          persist-credentials: false
+
+      - name: Download verified build artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: ErohaSuite_Core_Build
+          path: artifacts
+
+      - name: Reject missing or corrupt release archive
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -s artifacts/ErohaSuite_Core.zip
+          unzip -t artifacts/ErohaSuite_Core.zip
 
       - name: 🧮 Генерируем новый номер версии
         id: version
@@ -159,5 +175,6 @@ jobs:
             🗓️ Дата релиза: ${{ github.event.head_commit.timestamp }}
             👤 Автор: ${{ github.actor }}
           files: artifacts/ErohaSuite_Core.zip
+          fail_on_unmatched_files: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
