@@ -1,0 +1,110 @@
+name: EROHA syntax validators fail-closed smoke (no release)
+on:
+  push:
+    branches:
+      - test/eroha-parser-failclosed-20261110
+permissions:
+  contents: read
+jobs:
+  yaml:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Checkout without persisted credentials
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Run exact candidate YAML lint against repository
+        shell: bash
+        run: |
+          set -euo pipefail
+          pip install yamllint
+          yamllint -d relaxed .
+      - name: Assert invalid YAML is rejected
+        shell: bash
+        run: |
+          set -euo pipefail
+          printf 'invalid: [unfinished\n' > "$RUNNER_TEMP/eroha-invalid.yml"
+          if yamllint -d relaxed "$RUNNER_TEMP/eroha-invalid.yml"; then
+            echo "::error::INVALID_YAML_ACCEPTED"
+            exit 1
+          fi
+          echo "MALFORMED_YAML_REJECTED=PASS"
+  powershell:
+    runs-on: windows-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout read-only
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Make synthetic syntax error in worktree
+        shell: pwsh
+        run: |
+          Set-Content -Path .\broken_fixture.ps1 -Value 'if ($true) {' -Encoding utf8
+      - name: Run exact candidate PowerShell parser with invalid fixture
+        id: reject_invalid
+        shell: pwsh
+        continue-on-error: true
+        run: |
+          $ErrorActionPreference = "Stop"
+          $psFiles = Get-ChildItem -Path . -Recurse -Include *.ps1 -ErrorAction SilentlyContinue
+          if ($psFiles.Count -eq 0) {
+            Write-Host "PowerShell файлов не найдено, шаг пропущен."
+          } else {
+            foreach ($file in $psFiles) {
+              Write-Host "Проверяем $($file.FullName)"
+              try {
+                $tokens = $null
+                $parseErrors = $null
+                [void][System.Management.Automation.Language.Parser]::ParseFile(
+                  $file.FullName, [ref]$tokens, [ref]$parseErrors
+                )
+                if ($parseErrors.Count -gt 0) {
+                  $details = ($parseErrors | ForEach-Object { $_.ToString() }) -join "; "
+                  throw "PowerShell syntax rejected: $details"
+                }
+              } catch {
+                Write-Error "Ошибка в $($file.FullName): $_"
+                exit 1
+              }
+            }
+          }
+      - name: Assert failure outcome and replace with valid syntax
+        shell: pwsh
+        env:
+          NEGATIVE_OUTCOME: ${{ steps.reject_invalid.outcome }}
+        run: |
+          if ($env:NEGATIVE_OUTCOME -ne 'failure') {
+            throw 'INVALID_POWERSHELL_ACCEPTED'
+          }
+          Remove-Item .\broken_fixture.ps1
+          Set-Content -Path .\valid_fixture.ps1 -Value 'param([string]$Name) Write-Output $Name' -Encoding utf8
+          Write-Host 'INVALID_POWERSHELL_REJECTED=PASS'
+      - name: Run exact candidate PowerShell parser with valid fixture
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          $psFiles = Get-ChildItem -Path . -Recurse -Include *.ps1 -ErrorAction SilentlyContinue
+          if ($psFiles.Count -eq 0) {
+            Write-Host "PowerShell файлов не найдено, шаг пропущен."
+          } else {
+            foreach ($file in $psFiles) {
+              Write-Host "Проверяем $($file.FullName)"
+              try {
+                $tokens = $null
+                $parseErrors = $null
+                [void][System.Management.Automation.Language.Parser]::ParseFile(
+                  $file.FullName, [ref]$tokens, [ref]$parseErrors
+                )
+                if ($parseErrors.Count -gt 0) {
+                  $details = ($parseErrors | ForEach-Object { $_.ToString() }) -join "; "
+                  throw "PowerShell syntax rejected: $details"
+                }
+              } catch {
+                Write-Error "Ошибка в $($file.FullName): $_"
+                exit 1
+              }
+            }
+          }
+          Write-Host 'VALID_POWERSHELL_ACCEPTED=PASS'
