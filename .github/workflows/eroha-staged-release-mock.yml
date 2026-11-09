@@ -81,7 +81,7 @@ jobs:
           MOCK_GIT
           chmod +x "$RUNNER_TEMP/eroha-mockbin/gh" "$RUNNER_TEMP/eroha-mockbin/git"
           echo 'MOCK_SETUP=PASS'
-      - name: Prepare version and notes with exact candidate Python
+      - name: Prepare release version and notes without environment-file injection
         shell: bash
         run: |
           set -euo pipefail
@@ -90,7 +90,8 @@ jobs:
           def git(*args):
               return subprocess.check_output(['git', *args], text=True)
           head = git('rev-parse','HEAD').strip()
-          assert head == os.environ['GITHUB_SHA'], 'CHECKOUT_SHA_MISMATCH'
+          if head != os.environ['GITHUB_SHA']:
+              raise SystemExit('CHECKOUT_SHA_MISMATCH')
           entries = []
           for tag in git('tag','--list').splitlines():
               match = re.fullmatch(r'v([0-9]+)\.([0-9]+)\.([0-9]+)', tag)
@@ -100,7 +101,8 @@ jobs:
           previous = entries[-1][1] if entries else None
           major, minor, patch = entries[-1][0] if entries else (1, 0, -1)
           new_tag = f'v{major}.{minor}.{patch+1}'
-          assert re.fullmatch(r'v[0-9]+\.[0-9]+\.[0-9]+', new_tag)
+          if re.fullmatch(r'v[0-9]+\.[0-9]+\.[0-9]+', new_tag) is None:
+              raise SystemExit('INVALID_VERSION_TAG')
           if subprocess.run(['git','show-ref','--verify','--quiet',f'refs/tags/{new_tag}']).returncode == 0:
               raise SystemExit('TAG_ALREADY_EXISTS')
           with open(os.environ['GITHUB_ENV'],'a',encoding='utf-8') as env:
@@ -112,10 +114,12 @@ jobs:
                    'Изменения (Changelog)\n',log,'\n\nИзменённые файлы\n',changed)
           notes_path = pathlib.Path(os.environ['RUNNER_TEMP']) / 'eroha-release-notes.md'
           notes_path.write_text(''.join(notes),encoding='utf-8')
-          assert notes_path.stat().st_size > 0
+          if notes_path.stat().st_size == 0:
+              raise SystemExit('EMPTY_RELEASE_NOTES')
           print('RELEASE_CANDIDATE_NOT_PUBLISHED', new_tag)
           PY
-      - name: Check release guard cannot be bypassed with Python optimize
+
+      - name: Verify Python -O cannot bypass release SHA checks
         shell: bash
         run: |
           set -euo pipefail
@@ -161,94 +165,7 @@ jobs:
           echo "OPTIMIZED_MISMATCH_REJECTED=PASS"
           good="$RUNNER_TEMP/eroha-valid-opt.out"
           GITHUB_ENV="$good" python3 -O "$RUNNER_TEMP/eroha_version_candidate.py"
-          grep -Eq '^NEW_TAG=v[0-9]+[.][0-9]+[.][0-9]+        shell: bash
-        run: |
-          set -euo pipefail
-          export PATH="$RUNNER_TEMP/eroha-mockbin:$PATH"
-          test "$(command -v gh)" = "$RUNNER_TEMP/eroha-mockbin/gh"
-          test "$(command -v git)" = "$RUNNER_TEMP/eroha-mockbin/git"
-          cat > "$RUNNER_TEMP/stage.sh" <<'EROHA_STAGE'
-          set -euo pipefail
-          [[ "$NEW_TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]
-          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
-          test -s artifacts/ErohaSuite_Core.zip
-          if gh release view "$NEW_TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
-            echo "::error::RELEASE_TAG_ALREADY_HAS_RELEASE"
-            exit 42
-          fi
-          gh release create "$NEW_TAG" artifacts/ErohaSuite_Core.zip \
-            --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" \
-            --title "Eroha Core Release $NEW_TAG" \
-            --notes-file "$RUNNER_TEMP/eroha-release-notes.md" --draft
-          echo "DRAFT_CREATED_NOT_PUBLISHED"
-          EROHA_STAGE
-          cat > "$RUNNER_TEMP/verify.sh" <<'EROHA_VERIFY'
-          set -euo pipefail
-          [[ "$EXPECTED_ZIP_SHA256" =~ ^[0-9a-f]{64}$ ]]
-          release_json="$(gh release view "$NEW_TAG" --repo "$GITHUB_REPOSITORY" --json isDraft,assets)"
-          printf '%s\n' "$release_json" | jq -e '
-            .isDraft == true and
-            (.assets | length) == 1 and
-            ([.assets[] | select(.name == "ErohaSuite_Core.zip" and .size > 0)] | length) == 1
-          ' >/dev/null
-          remote_tag="$(git ls-remote --tags origin "refs/tags/$NEW_TAG" | awk 'NR==1 {print $1}')"
-          test "$remote_tag" = "$GITHUB_SHA"
-          mkdir -p "$RUNNER_TEMP/eroha-release-verify"
-          gh release download "$NEW_TAG" --repo "$GITHUB_REPOSITORY" \
-            --pattern 'ErohaSuite_Core.zip' --dir "$RUNNER_TEMP/eroha-release-verify"
-          test -s "$RUNNER_TEMP/eroha-release-verify/ErohaSuite_Core.zip"
-          printf '%s  %s\n' "$EXPECTED_ZIP_SHA256" "$RUNNER_TEMP/eroha-release-verify/ErohaSuite_Core.zip" | sha256sum --check --status
-          unzip -t "$RUNNER_TEMP/eroha-release-verify/ErohaSuite_Core.zip"
-          echo "DRAFT_ASSET_VERIFIED_NOT_PUBLISHED"
-          EROHA_VERIFY
-          cat > "$RUNNER_TEMP/publish.sh" <<'EROHA_PUBLISH'
-          set -euo pipefail
-          gh release edit "$NEW_TAG" --repo "$GITHUB_REPOSITORY" --draft=false
-          release_json="$(gh release view "$NEW_TAG" --repo "$GITHUB_REPOSITORY" --json isDraft,assets)"
-          printf '%s\n' "$release_json" | jq -e '
-            .isDraft == false and
-            (.assets | length) == 1 and
-            ([.assets[] | select(.name == "ErohaSuite_Core.zip" and .size > 0)] | length) == 1
-          ' >/dev/null
-          echo "PUBLISHED_RELEASE_ASSET_PRESENT_NOT_INDEPENDENTLY_ATTESTED"
-          EROHA_PUBLISH
-          mv artifacts/ErohaSuite_Core.zip "$RUNNER_TEMP/held.zip"
-          if bash "$RUNNER_TEMP/stage.sh"; then exit 10; fi
-          test ! -e "$MOCK_DIR/created"
-          mv "$RUNNER_TEMP/held.zip" artifacts/ErohaSuite_Core.zip
-          echo 'MISSING_ZIP_PREVENTED_DRAFT=PASS'
-          touch "$MOCK_DIR/create_fail"
-          if bash "$RUNNER_TEMP/stage.sh"; then exit 11; fi
-          test ! -e "$MOCK_DIR/created"
-          rm "$MOCK_DIR/create_fail"
-          echo 'CREATE_ERROR_PREVENTED_DRAFT=PASS'
-          bash "$RUNNER_TEMP/stage.sh"
-          test -e "$MOCK_DIR/created"
-          test ! -e "$MOCK_DIR/published"
-          echo 'STAGED_DRAFT_ONLY=PASS'
-          touch "$MOCK_DIR/api_fail"
-          if bash "$RUNNER_TEMP/verify.sh"; then exit 12; fi
-          test ! -e "$MOCK_DIR/published"
-          rm "$MOCK_DIR/api_fail"
-          echo 'API_ERROR_BLOCKS_PUBLISH=PASS'
-          touch "$MOCK_DIR/tamper"
-          if bash "$RUNNER_TEMP/verify.sh"; then exit 13; fi
-          test ! -e "$MOCK_DIR/published"
-          rm "$MOCK_DIR/tamper"
-          echo 'TAMPERED_ASSET_BLOCKS_PUBLISH=PASS'
-          bash "$RUNNER_TEMP/verify.sh"
-          test ! -e "$MOCK_DIR/published"
-          echo 'VALID_DRAFT_ASSET_VERIFIED=PASS'
-          touch "$MOCK_DIR/edit_fail"
-          if bash "$RUNNER_TEMP/publish.sh"; then exit 14; fi
-          test ! -e "$MOCK_DIR/published"
-          rm "$MOCK_DIR/edit_fail"
-          echo 'PUBLISH_ERROR_PRESERVES_DRAFT=PASS'
-          bash "$RUNNER_TEMP/publish.sh"
-          test -e "$MOCK_DIR/published"
-          echo 'MOCK_PUBLISHED_AFTER_VERIFICATION=PASS'
-          echo 'EROHA_MOCK_STAGING=PASS'
- "$good"
+          grep -Eq '^NEW_TAG=v[0-9]+[.][0-9]+[.][0-9]+$' "$good"
           echo "OPTIMIZED_VALID_SOURCE_ACCEPTED=PASS"
       - name: Run exact production candidate scripts against in-runner mocks
         shell: bash
