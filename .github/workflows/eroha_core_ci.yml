@@ -183,7 +183,8 @@ jobs:
           def git(*args):
               return subprocess.check_output(['git', *args], text=True)
           head = git('rev-parse','HEAD').strip()
-          assert head == os.environ['GITHUB_SHA'], 'CHECKOUT_SHA_MISMATCH'
+          if head != os.environ['GITHUB_SHA']:
+              raise SystemExit('CHECKOUT_SHA_MISMATCH')
           entries = []
           for tag in git('tag','--list').splitlines():
               match = re.fullmatch(r'v([0-9]+)\.([0-9]+)\.([0-9]+)', tag)
@@ -193,7 +194,8 @@ jobs:
           previous = entries[-1][1] if entries else None
           major, minor, patch = entries[-1][0] if entries else (1, 0, -1)
           new_tag = f'v{major}.{minor}.{patch+1}'
-          assert re.fullmatch(r'v[0-9]+\.[0-9]+\.[0-9]+', new_tag)
+          if re.fullmatch(r'v[0-9]+\.[0-9]+\.[0-9]+', new_tag) is None:
+              raise SystemExit('INVALID_VERSION_TAG')
           if subprocess.run(['git','show-ref','--verify','--quiet',f'refs/tags/{new_tag}']).returncode == 0:
               raise SystemExit('TAG_ALREADY_EXISTS')
           with open(os.environ['GITHUB_ENV'],'a',encoding='utf-8') as env:
@@ -205,7 +207,8 @@ jobs:
                    'Изменения (Changelog)\n',log,'\n\nИзменённые файлы\n',changed)
           notes_path = pathlib.Path(os.environ['RUNNER_TEMP']) / 'eroha-release-notes.md'
           notes_path.write_text(''.join(notes),encoding='utf-8')
-          assert notes_path.stat().st_size > 0
+          if notes_path.stat().st_size == 0:
+              raise SystemExit('EMPTY_RELEASE_NOTES')
           print('RELEASE_CANDIDATE_NOT_PUBLISHED', new_tag)
           PY
 
