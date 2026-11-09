@@ -49,7 +49,7 @@ jobs:
               test ! -e "$MOCK_DIR/created" || exit 9
               test ! -e "$MOCK_DIR/create_fail" || exit 10
               [[ " $* " == *" --draft"* ]] || exit 11
-              test "$3" = "artifacts/ErohaSuite_Core.zip"
+              test "$4" = "artifacts/ErohaSuite_Core.zip"
               touch "$MOCK_DIR/created"
               ;;
             release:download)
