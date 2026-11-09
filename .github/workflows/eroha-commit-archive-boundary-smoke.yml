@@ -39,7 +39,7 @@ jobs:
           python3 - "$fixture/artifacts/legacy.zip" <<'PY'
           import sys, zipfile
           with zipfile.ZipFile(sys.argv[1]) as z:
-              names = {x.lstrip('./') for x in z.namelist()}
+              names = {x.removeprefix("./") for x in z.namelist()}
           assert '.env' in names, names
           print("LEGACY_UNTRACKED_LEAK_REPRODUCED=PASS")
           PY
