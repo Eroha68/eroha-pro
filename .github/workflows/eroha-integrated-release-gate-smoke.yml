@@ -1,0 +1,98 @@
+name: EROHA integrated release gate transport smoke (no release)
+
+on:
+  push:
+    branches:
+      - test/eroha-integrated-release-gate-20261110
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    outputs:
+      archive_sha256: ${{ steps.checksum.outputs.sha256 }}
+    steps:
+      - name: Prepare synthetic ZIP
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p artifacts
+          python3 - <<'PY'
+          from zipfile import ZipFile, ZIP_DEFLATED
+          with ZipFile("artifacts/ErohaSuite_Core.zip","w",ZIP_DEFLATED) as f:
+              f.writestr("synthetic.txt","EROHA INTEGRATED SMOKE - NOT A RELEASE")
+          PY
+      - name: Capture trusted job-local SHA-256 of release ZIP
+        id: checksum
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -s artifacts/ErohaSuite_Core.zip
+          unzip -t artifacts/ErohaSuite_Core.zip
+          sha="$(sha256sum artifacts/ErohaSuite_Core.zip | cut -d ' ' -f1)"
+          [[ "$sha" =~ ^[0-9a-f]{64}$ ]]
+          echo "sha256=$sha" >> "$GITHUB_OUTPUT"
+      - name: Upload synthetic ZIP
+        uses: actions/upload-artifact@v4
+        with:
+          name: ErohaSuite_Core_Build
+          path: artifacts/ErohaSuite_Core.zip
+          if-no-files-found: error
+          retention-days: 1
+
+  verify:
+    needs: [build]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Checkout for exact HEAD SHA check
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Download exact named archive
+        uses: actions/download-artifact@v4
+        with:
+          name: ErohaSuite_Core_Build
+          path: artifacts
+      - name: Verify exact proposed script and three fail-closed mutations
+        shell: bash
+        env:
+          EXPECTED_ZIP_SHA256: ${{ needs.build.outputs.archive_sha256 }}
+        run: |
+          set -euo pipefail
+          cat > "$RUNNER_TEMP/verify_eroha_archive.sh" <<'GUARD'
+set -euo pipefail
+[[ "$EXPECTED_ZIP_SHA256" =~ ^[0-9a-f]{64}$ ]]
+test -s artifacts/ErohaSuite_Core.zip
+printf '%s  %s\n' "$EXPECTED_ZIP_SHA256" artifacts/ErohaSuite_Core.zip | sha256sum --check --status
+unzip -t artifacts/ErohaSuite_Core.zip
+test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          GUARD
+          bash "$RUNNER_TEMP/verify_eroha_archive.sh"
+          echo "VALID_ARCHIVE_SHA256=PASS"
+          if EXPECTED_ZIP_SHA256="$(printf '0%.0s' {1..64})" bash "$RUNNER_TEMP/verify_eroha_archive.sh"; then
+            echo "::error::Wrong expected SHA-256 was accepted"
+            exit 1
+          fi
+          echo "WRONG_SHA_REJECTED=PASS"
+          cp artifacts/ErohaSuite_Core.zip "$RUNNER_TEMP/original.zip"
+          printf 'tampered-bytes' >> artifacts/ErohaSuite_Core.zip
+          if bash "$RUNNER_TEMP/verify_eroha_archive.sh"; then
+            echo "::error::Tampered ZIP was accepted"
+            exit 1
+          fi
+          mv "$RUNNER_TEMP/original.zip" artifacts/ErohaSuite_Core.zip
+          echo "TAMPERED_ZIP_REJECTED=PASS"
+          mv artifacts/ErohaSuite_Core.zip "$RUNNER_TEMP/held.zip"
+          if bash "$RUNNER_TEMP/verify_eroha_archive.sh"; then
+            echo "::error::Missing ZIP was accepted"
+            exit 1
+          fi
+          mv "$RUNNER_TEMP/held.zip" artifacts/ErohaSuite_Core.zip
+          echo "MISSING_ZIP_REJECTED=PASS"
+          bash "$RUNNER_TEMP/verify_eroha_archive.sh"
+          echo "INTEGRATED_TRANSFER_SMOKE=PASS"
