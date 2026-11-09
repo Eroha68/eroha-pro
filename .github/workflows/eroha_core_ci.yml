@@ -64,7 +64,7 @@ jobs:
       - name: ✅ Проверяем YAML-файлы
         run: |
           pip install yamllint
-          yamllint . || true
+          yamllint -d relaxed .
 
       - name: Reject archive leaks and unsafe committed entries
         shell: bash
@@ -105,7 +105,15 @@ jobs:
             foreach ($file in $psFiles) {
               Write-Host "Проверяем $($file.FullName)"
               try {
-                pwsh -NoLogo -NoProfile -Command "Get-Command '$($file.FullName)' | Out-Null"
+                $tokens = $null
+                $parseErrors = $null
+                [void][System.Management.Automation.Language.Parser]::ParseFile(
+                  $file.FullName, [ref]$tokens, [ref]$parseErrors
+                )
+                if ($parseErrors.Count -gt 0) {
+                  $details = ($parseErrors | ForEach-Object { $_.ToString() }) -join "; "
+                  throw "PowerShell syntax rejected: $details"
+                }
               } catch {
                 Write-Error "Ошибка в $($file.FullName): $_"
                 exit 1
