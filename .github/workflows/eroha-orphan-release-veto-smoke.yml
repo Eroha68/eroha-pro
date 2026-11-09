@@ -1,0 +1,82 @@
+name: EROHA orphaned tagged release guard smoke (no release)
+
+on:
+  push:
+    branches:
+      - test/eroha-orphan-release-veto-20261110
+
+permissions:
+  contents: read
+
+jobs:
+  verify_orphan_guard:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Checkout previously published and tagged SHA
+        uses: actions/checkout@v4
+        with:
+          ref: e97246874b048a7c8049b6ad7ec02c1b063419c1
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Prove orphaned release veto and verified mock boundaries
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = e97246874b048a7c8049b6ad7ec02c1b063419c1
+          cat > "$RUNNER_TEMP/proposed_eligibility.sh" <<'EROHA_GUARD'
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          tags="$(git tag --points-at "$GITHUB_SHA" --sort=-v:refname)"
+          matching_tag=""
+          while IFS= read -r tag; do
+            if [[ "$tag" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+              matching_tag="$tag"
+              break
+            fi
+          done <<< "$tags"
+          if [[ -n "$matching_tag" ]]; then
+            archive_assets="$(gh release view "$matching_tag" --repo "$GITHUB_REPOSITORY" --json assets,isDraft --jq 'if .isDraft then 0 else [.assets[] | select(.name == "ErohaSuite_Core.zip" and .size > 0)] | length end')"
+            if [[ "$archive_assets" != "1" ]]; then
+              echo "::error::TAGGED_RELEASE_WITHOUT_ARCHIVE_ASSET tag=$matching_tag count=$archive_assets"
+              exit 41
+            fi
+            echo "should_release=false" >> "$GITHUB_OUTPUT"
+            echo "RELEASE_ELIGIBILITY=SKIP_ASSET_PRESENT_NOT_ATTESTED"
+          else
+            echo "should_release=true" >> "$GITHUB_OUTPUT"
+            echo "RELEASE_ELIGIBILITY=NEW_SHA"
+          fi
+          EROHA_GUARD
+          if GITHUB_SHA=e97246874b048a7c8049b6ad7ec02c1b063419c1 bash "$RUNNER_TEMP/proposed_eligibility.sh"; then
+            echo "::error::Existing tag with absent release ZIP incorrectly accepted"
+            exit 1
+          else
+            status=$?
+          fi
+          test "$status" = 41
+          echo "REAL_ORPHANED_RELEASE_REJECTED=PASS"
+          mkdir -p "$RUNNER_TEMP/fakebin"
+          printf '#!/bin/sh\nprintf "1\\n"\n' > "$RUNNER_TEMP/fakebin/gh"
+          chmod +x "$RUNNER_TEMP/fakebin/gh"
+          out="$RUNNER_TEMP/mock_valid.out"
+          PATH="$RUNNER_TEMP/fakebin:$PATH" GITHUB_OUTPUT="$out" GITHUB_SHA=e97246874b048a7c8049b6ad7ec02c1b063419c1 bash "$RUNNER_TEMP/proposed_eligibility.sh"
+          grep -Fxq "should_release=false" "$out"
+          echo "MOCK_VALID_RELEASE_ASSET_SKIPS=PASS"
+          printf '#!/bin/sh\nexit 7\n' > "$RUNNER_TEMP/fakebin/gh"
+          out2="$RUNNER_TEMP/mock_unavailable.out"
+          if PATH="$RUNNER_TEMP/fakebin:$PATH" GITHUB_OUTPUT="$out2" GITHUB_SHA=e97246874b048a7c8049b6ad7ec02c1b063419c1 bash "$RUNNER_TEMP/proposed_eligibility.sh"; then
+            echo "::error::Unreachable release API incorrectly accepted"
+            exit 1
+          fi
+          test ! -e "$out2"
+          echo "RELEASE_API_FAILURE_REJECTED=PASS"
+          git checkout --detach "$GITHUB_SHA"
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          out3="$RUNNER_TEMP/new_sha.out"
+          GITHUB_OUTPUT="$out3" bash "$RUNNER_TEMP/proposed_eligibility.sh"
+          grep -Fxq "should_release=true" "$out3"
+          echo "UNTAGGED_SHA_ELIGIBLE=PASS"
+          echo "ORPHAN_RELEASE_SMOKE=PASS"
