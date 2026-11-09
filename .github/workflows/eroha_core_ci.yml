@@ -165,7 +165,7 @@ jobs:
     name: EROHA NO-GO - independent release authorization missing
     runs-on: ubuntu-24.04
     needs: [eligibility, build-archive]
-    if: needs.eligibility.outputs.should_release == 'true'
+    if: always()
     timeout-minutes: 3
     permissions:
       contents: read
