@@ -81,6 +81,40 @@ jobs:
           MOCK_GIT
           chmod +x "$RUNNER_TEMP/eroha-mockbin/gh" "$RUNNER_TEMP/eroha-mockbin/git"
           echo 'MOCK_SETUP=PASS'
+      - name: Prepare version and notes with exact candidate Python
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import os, pathlib, re, subprocess
+          def git(*args):
+              return subprocess.check_output(['git', *args], text=True)
+          head = git('rev-parse','HEAD').strip()
+          assert head == os.environ['GITHUB_SHA'], 'CHECKOUT_SHA_MISMATCH'
+          entries = []
+          for tag in git('tag','--list').splitlines():
+              match = re.fullmatch(r'v([0-9]+)\.([0-9]+)\.([0-9]+)', tag)
+              if match:
+                  entries.append((tuple(map(int, match.groups())), tag))
+          entries.sort()
+          previous = entries[-1][1] if entries else None
+          major, minor, patch = entries[-1][0] if entries else (1, 0, -1)
+          new_tag = f'v{major}.{minor}.{patch+1}'
+          assert re.fullmatch(r'v[0-9]+\.[0-9]+\.[0-9]+', new_tag)
+          if subprocess.run(['git','show-ref','--verify','--quiet',f'refs/tags/{new_tag}']).returncode == 0:
+              raise SystemExit('TAG_ALREADY_EXISTS')
+          with open(os.environ['GITHUB_ENV'],'a',encoding='utf-8') as env:
+              env.write(f'NEW_TAG={new_tag}\n')
+          log = git('log','-n','10','--pretty=format:- %s (%an, %ad, %h)','--date=short')
+          changed = git('diff','--name-only',previous,'HEAD') if previous else git('ls-files')
+          notes = ('🇷🇺 Описание релиза\nНовая версия ядра Eroha Core.\n\n'
+                   '🇰🇿 Релиз сипаттамасы\nEroha Core ядросының жаңа нұсқасы.\n\n'
+                   'Изменения (Changelog)\n',log,'\n\nИзменённые файлы\n',changed)
+          notes_path = pathlib.Path(os.environ['RUNNER_TEMP']) / 'eroha-release-notes.md'
+          notes_path.write_text(''.join(notes),encoding='utf-8')
+          assert notes_path.stat().st_size > 0
+          print('RELEASE_CANDIDATE_NOT_PUBLISHED', new_tag)
+          PY
       - name: Run exact production candidate scripts against in-runner mocks
         shell: bash
         run: |
