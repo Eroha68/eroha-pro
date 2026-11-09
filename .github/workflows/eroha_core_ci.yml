@@ -92,6 +92,19 @@ jobs:
         with:
           fetch-depth: 0
 
+      - name: Download verified build artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: ErohaSuite_Core_Build
+          path: artifacts
+
+      - name: Reject missing or corrupt release archive
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -s artifacts/ErohaSuite_Core.zip
+          unzip -t artifacts/ErohaSuite_Core.zip
+
       - name: 🧮 Генерируем новый номер версии
         id: version
         run: |
@@ -159,5 +172,6 @@ jobs:
             🗓️ Дата релиза: ${{ github.event.head_commit.timestamp }}
             👤 Автор: ${{ github.actor }}
           files: artifacts/ErohaSuite_Core.zip
+          fail_on_unmatched_files: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
