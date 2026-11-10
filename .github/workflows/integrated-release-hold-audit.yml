@@ -1,0 +1,27 @@
+name: EROHA integrated release hold - draft-only regression
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/deploy.yml'
+      - '.github/workflows/eroha_core_ci.yml'
+      - '.github/workflows/tests/test_integrated_release_hold.py'
+      - '.github/workflows/integrated-release-hold-audit.yml'
+permissions:
+  contents: read
+jobs:
+  audit-no-go:
+    name: Validate both candidate release holds without publishing
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Checkout untrusted draft without persisted credentials
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          persist-credentials: false
+      - name: Run isolated static regression checks
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 -B -m unittest discover -s .github/workflows/tests -p 'test_integrated_release_hold.py' -v
+          python3 -O -B -m unittest discover -s .github/workflows/tests -p 'test_integrated_release_hold.py' -v
+          echo 'INTEGRATED_CANDIDATE_STATIC_CHECK=PASS_NOT_PRODUCTION'
