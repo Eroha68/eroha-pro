@@ -80,11 +80,9 @@ class IntegratedHoldTests(unittest.TestCase):
         self.assertIn("independently managed Guardian", CORE)
 
     def test_disabled_guardian_exit_is_detected(self):
-        tampered = CORE.replace(
-            "          exit 41",
-            "          # exit 41\n          exit 0",
-            1,
-        )
+        prefix, marker, suffix = CORE.rpartition("          exit 41")
+        self.assertEqual(marker, "          exit 41")
+        tampered = prefix + "          # exit 41\n          exit 0" + suffix
         self.assertNotEqual(tampered, CORE)
         self.assertFalse(active_fail_closed(tampered, "guardian-authorization"))
 
