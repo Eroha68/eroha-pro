@@ -237,7 +237,7 @@ def build(repo: Path, commit: str, output: Path,
     if (os.name != "posix" or not hasattr(os, "O_NOFOLLOW") or
             not hasattr(os, "O_DIRECTORY") or
             any(fn not in os.supports_dir_fd
-                for fn in (os.open, os.mkdir, os.replace, os.unlink, os.stat))):
+                for fn in (os.open, os.mkdir, os.unlink, os.stat))):
         raise ValueError("OUTPUT_SAFE_OPEN_UNSUPPORTED")
     absolute_output = Path(os.path.abspath(output))
     directory_flags = (os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW |
