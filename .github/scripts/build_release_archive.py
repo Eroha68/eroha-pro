@@ -112,8 +112,14 @@ def build(repo: Path, commit: str, output: Path) -> tuple[int, int]:
         if size > MAX_MEMBER_SIZE or planned_total > MAX_TOTAL_SIZE:
             raise ValueError("ARCHIVE_SIZE_LIMIT")
         preflight.append((name, object_id, size))
+    # Refuse symlinks in ANY existing parent component before mkdir.
+    # An immediate-parent-only check can follow an ancestor link outside
+    # the intended output tree. This does not replace an OS-level sandbox.
+    absolute_output = Path(os.path.abspath(output))
+    if absolute_output.is_symlink() or any(parent.is_symlink() for parent in absolute_output.parents):
+        raise ValueError("UNSAFE_OUTPUT_PATH")
     output.parent.mkdir(parents=True, exist_ok=True)
-    if output.is_symlink() or output.parent.is_symlink():
+    if absolute_output.is_symlink() or any(parent.is_symlink() for parent in absolute_output.parents):
         raise ValueError("UNSAFE_OUTPUT_PATH")
     temp_path: str | None = None
     total = 0
