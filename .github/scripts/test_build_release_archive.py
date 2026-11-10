@@ -137,5 +137,57 @@ class ArchiveBoundaryTest(unittest.TestCase):
             build(self.repo, self.commit, self.output)
 
 
+    def test_tracked_nested_dotenv_directory_must_not_leak(self):
+        self.add_commit(".env/credentials.txt",
+                        b"EROHA_SYNTHETIC_SECRET_SENTINEL_NOT_REAL")
+        with self.assertRaisesRegex(ValueError, "SECRET_LIKE_TRACKED_FILE"):
+            build(self.repo, self.commit, self.output)
+        self.assertFalse(self.output.exists())
+
+    def test_tracked_nested_environment_variant_must_not_leak(self):
+        self.add_commit("config/.env.production/credentials.json",
+                        b"EROHA_SYNTHETIC_SECRET_SENTINEL_NOT_REAL")
+        with self.assertRaisesRegex(ValueError, "SECRET_LIKE_TRACKED_FILE"):
+            build(self.repo, self.commit, self.output)
+        self.assertFalse(self.output.exists())
+
+    def test_tracked_npmrc_must_not_leak(self):
+        self.add_commit(".npmrc", b"//registry.example.invalid/:_authToken=SYNTHETIC_ONLY")
+        with self.assertRaisesRegex(ValueError, "SECRET_LIKE_TRACKED_FILE"):
+            build(self.repo, self.commit, self.output)
+        self.assertFalse(self.output.exists())
+
+    def test_tracked_ssh_private_key_without_suffix_must_not_leak(self):
+        self.add_commit(".ssh/id_ed25519", b"SYNTHETIC_PRIVATE_KEY_NOT_REAL")
+        with self.assertRaisesRegex(ValueError, "SECRET_LIKE_TRACKED_FILE"):
+            build(self.repo, self.commit, self.output)
+        self.assertFalse(self.output.exists())
+
+
+    def test_tracked_aws_credentials_directory_is_rejected(self):
+        self.add_commit(".aws/credentials", b"[default]\nSYNTHETIC_NOT_REAL\n")
+        with self.assertRaisesRegex(ValueError, "SECRET_LIKE_TRACKED_FILE"):
+            build(self.repo, self.commit, self.output)
+        self.assertFalse(self.output.exists())
+
+    def test_tracked_nested_kube_config_is_rejected(self):
+        self.add_commit("deploy/.kube/config", b"SYNTHETIC_NOT_REAL")
+        with self.assertRaisesRegex(ValueError, "SECRET_LIKE_TRACKED_FILE"):
+            build(self.repo, self.commit, self.output)
+        self.assertFalse(self.output.exists())
+
+    def test_tracked_pypirc_is_rejected(self):
+        self.add_commit(".pypirc", b"[distutils]\npassword=SYNTHETIC_ONLY\n")
+        with self.assertRaisesRegex(ValueError, "SECRET_LIKE_TRACKED_FILE"):
+            build(self.repo, self.commit, self.output)
+        self.assertFalse(self.output.exists())
+
+    def test_case_variant_dotenv_directory_is_rejected(self):
+        self.add_commit("config/.ENV.Staging/key.json", b"SYNTHETIC_NOT_REAL")
+        with self.assertRaisesRegex(ValueError, "SECRET_LIKE_TRACKED_FILE"):
+            build(self.repo, self.commit, self.output)
+        self.assertFalse(self.output.exists())
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -20,6 +20,10 @@ MAX_MEMBER_SIZE = 32 * 1024 * 1024
 MAX_TOTAL_SIZE = 256 * 1024 * 1024
 FORBIDDEN_COMPONENTS = {".git", ".github", "artifacts", "__pycache__"}
 FORBIDDEN_EXTENSIONS = {".pem", ".p12", ".pfx", ".key", ".kdbx"}
+# Sensitive credential locations without necessarily dangerous file extensions.
+SENSITIVE_DIRECTORIES = {".ssh", ".aws", ".azure", ".kube", ".gnupg"}
+SENSITIVE_FILENAMES = {".npmrc", ".pypirc", ".netrc", "id_rsa",
+                       "id_dsa", "id_ecdsa", "id_ed25519"}
 WINDOWS_FORBIDDEN = re.compile(r'[<>:"\\|?*\x00-\x1f]')
 WINDOWS_RESERVED = re.compile(
     r"(?i)^(CON|PRN|AUX|NUL|COM[1-9]|LPT[1-9])(?:\..*)?$"
@@ -46,12 +50,22 @@ def safe_name(path: str) -> str:
 
 
 def is_forbidden(path: str) -> bool:
-    parts = path.split("/")
-    basename = parts[-1].lower()
-    if any(part.lower() in FORBIDDEN_COMPONENTS for part in parts):
+    parts = [component.lower() for component in path.split("/")]
+    basename = parts[-1]
+    if any(component in FORBIDDEN_COMPONENTS for component in parts):
         return True
+    # A directly tracked .env or .env.production file is excluded as before.
+    # An *entire directory* of the same name is a different leak path:
+    # fail the whole release rather than silently shipping nested secrets.
     if basename == ".env" or basename.startswith(".env."):
         return True
+    if any(component == ".env" or component.startswith(".env.")
+           for component in parts[:-1]):
+        raise ValueError("SECRET_LIKE_TRACKED_FILE")
+    if any(component in SENSITIVE_DIRECTORIES for component in parts):
+        raise ValueError("SECRET_LIKE_TRACKED_FILE")
+    if basename in SENSITIVE_FILENAMES:
+        raise ValueError("SECRET_LIKE_TRACKED_FILE")
     if any(basename.endswith(extension) for extension in FORBIDDEN_EXTENSIONS):
         raise ValueError("SECRET_LIKE_TRACKED_FILE")
     return False
