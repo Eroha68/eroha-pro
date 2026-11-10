@@ -23,11 +23,11 @@ def job_text(source, name):
     return match.group(1)
 
 
-def active_fail_closed(source, job_name):
+def active_fail_closed(source, job_name, require_always=True):
     block = job_text(source, job_name)
     if not block or "continue-on-error:" in block:
         return False
-    if not re.search(r"(?m)^    if: always\(\)\s*$", block):
+    if require_always and not re.search(r"(?m)^    if: always\(\)\s*$", block):
         return False
 
     lines = block.splitlines()
@@ -71,9 +71,24 @@ class IntegratedHoldTests(unittest.TestCase):
 
     def test_hf_is_explicit_quarantine(self):
         self.assertIn("release-quarantine:", HF)
-        self.assertIn("exit 41", HF)
+        self.assertTrue(active_fail_closed(HF, "release-quarantine", require_always=False))
         self.assertIn("contents: read", HF)
         self.assertNotIn("contents: write", HF)
+
+    def test_disabled_hf_exit_is_detected(self):
+        prefix, marker, suffix = HF.rpartition("          exit 41")
+        self.assertEqual(marker, "          exit 41")
+        tampered = prefix + "          # exit 41\n          exit 0" + suffix
+        self.assertFalse(active_fail_closed(tampered, "release-quarantine", require_always=False))
+
+    def test_hf_continue_on_error_is_detected(self):
+        tampered = HF.replace(
+            "  release-quarantine:\n",
+            "  release-quarantine:\n    continue-on-error: true\n",
+            1,
+        )
+        self.assertNotEqual(tampered, HF)
+        self.assertFalse(active_fail_closed(tampered, "release-quarantine", require_always=False))
 
     def test_core_guardian_fails_closed(self):
         self.assertTrue(active_fail_closed(CORE, "guardian-authorization"))
@@ -96,7 +111,7 @@ class IntegratedHoldTests(unittest.TestCase):
         self.assertFalse(active_fail_closed(tampered, "guardian-authorization"))
 
     def test_core_release_job_is_absent_until_independent_broker(self):
-        self.assertNotRegex(CORE, r"(?m)^  release:\\s*$")
+        self.assertNotRegex(CORE, r"(?m)^  release:\s*$")
         self.assertNotIn("gh release create", CORE)
         self.assertNotIn("gh release edit", CORE)
         self.assertNotIn("gh release upload", CORE)
