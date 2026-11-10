@@ -207,6 +207,23 @@ class IntegratedHoldTests(unittest.TestCase):
         tampered = CORE.replace(header, header + "        if: false\n", 1)
         self.assertFalse(active_fail_closed(tampered, "guardian-authorization"))
 
+    def test_core_checkouts_do_not_persist_credentials(self):
+        pinned = "uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683"
+        self.assertEqual(CORE.count(pinned), 4)
+        self.assertNotIn("uses: actions/checkout@v4", CORE)
+        for job_name in ("eligibility", "validate-core", "powershell-check", "build-archive"):
+            block = job_text(CORE, job_name)
+            self.assertIsNotNone(block)
+            checkout_steps = re.findall(
+                r"(?m)^        uses: actions/checkout@[^\\n]+$",
+                block,
+            )
+            self.assertEqual(checkout_steps, ["        " + pinned])
+            self.assertRegex(
+                block,
+                r"(?m)^        uses: actions/checkout@[^\\n]+\\n        with:\\n(?:(?:          [^\\n]+\\n)*)          persist-credentials: false$",
+            )
+
     def test_build_is_blocked_until_guardian_succeeds(self):
         guardian = job_text(CORE, "guardian-authorization")
         build_job = job_text(CORE, "build-archive")
