@@ -78,6 +78,25 @@ class ArchiveBoundaryTest(unittest.TestCase):
         with zipfile.ZipFile(self.output) as archive:
             self.assertEqual(archive.read("app.py"), b"print('committed')\n")
 
+    def test_archive_preserves_git_executable_mode_not_worktree_mode(self):
+        git(self.repo, "update-index", "--chmod=+x", "app.py")
+        git(self.repo, "commit", "-qm", "Mark committed app executable")
+        self.commit = git(self.repo, "rev-parse", "HEAD")
+        # Verify from Git's index/tree rather than the runner filesystem.
+        self.assertTrue(git(self.repo, "ls-tree", "HEAD", "app.py").startswith("100755 "))
+        self.fixture_build(self.repo, self.commit, self.output)
+        with zipfile.ZipFile(self.output) as archive:
+            member = archive.getinfo("app.py")
+            self.assertEqual(member.create_system, 3)
+            self.assertEqual(member.external_attr >> 16, 0o100755)
+
+    def test_archive_keeps_regular_git_file_nonexecutable(self):
+        self.assertTrue(git(self.repo, "ls-tree", "HEAD", "app.py").startswith("100644 "))
+        self.fixture_build(self.repo, self.commit, self.output)
+        with zipfile.ZipFile(self.output) as archive:
+            member = archive.getinfo("app.py")
+            self.assertEqual(member.external_attr >> 16, 0o100644)
+
     def test_untracked_environment_and_previous_archives_excluded(self):
         (self.repo / ".env").write_text("SYNTHETIC_ONLY", encoding="utf-8")
         (self.repo / "scratch.txt").write_text("not committed", encoding="utf-8")
