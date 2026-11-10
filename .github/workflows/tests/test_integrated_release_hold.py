@@ -8,7 +8,7 @@ import pathlib
 import re
 import unittest
 
-ROOT = pathlib.Path(__file__).resolve().parent
+ROOT = pathlib.Path(__file__).resolve().parent.parent
 HF = (ROOT / "deploy.yml").read_text(encoding="utf-8")
 CORE = (ROOT / "eroha_core_ci.yml").read_text(encoding="utf-8")
 
