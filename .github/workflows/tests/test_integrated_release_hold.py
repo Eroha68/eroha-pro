@@ -15,7 +15,7 @@ CORE = (ROOT / "eroha_core_ci.yml").read_text(encoding="utf-8")
 
 def job_text(source, name):
     match = re.search(
-        rf"(?ms)^  {re.escape(name)}:\\s*\\n(.*?)(?=^  [a-zA-Z][\\w-]*:\\s*$|\\Z)",
+        rf"(?ms)^  {re.escape(name)}:\s*\n(.*?)(?=^  [a-zA-Z][\w-]*:\s*$|\Z)",
         source,
     )
     if match is None:
@@ -27,9 +27,9 @@ def active_fail_closed(source, job_name):
     block = job_text(source, job_name)
     if not block or "continue-on-error:" in block:
         return False
-    if not re.search(r"(?m)^    if: always\\(\\)\\s*$", block):
+    if not re.search(r"(?m)^    if: always\(\)\s*$", block):
         return False
-    match = re.search(r"(?m)^        run: \\|\\s*\\n((?:^          .*\\n?)+)", block)
+    match = re.search(r"(?m)^        run: \|\s*\n((?:^          .*\n?)+)", block)
     if match is None:
         return False
     commands = [
@@ -74,7 +74,7 @@ class IntegratedHoldTests(unittest.TestCase):
     def test_disabled_guardian_exit_is_detected(self):
         tampered = CORE.replace(
             "          exit 41",
-            "          # exit 41\\n          exit 0",
+            "          # exit 41\n          exit 0",
             1,
         )
         self.assertNotEqual(tampered, CORE)
@@ -82,8 +82,8 @@ class IntegratedHoldTests(unittest.TestCase):
 
     def test_guardian_continue_on_error_is_detected(self):
         tampered = CORE.replace(
-            "  guardian-authorization:\\n",
-            "  guardian-authorization:\\n    continue-on-error: true\\n",
+            "  guardian-authorization:\n",
+            "  guardian-authorization:\n    continue-on-error: true\n",
             1,
         )
         self.assertNotEqual(tampered, CORE)
