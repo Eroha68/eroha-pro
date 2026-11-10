@@ -131,6 +131,12 @@ class ArchiveBoundaryTest(unittest.TestCase):
             self.fixture_build(self.repo, "0" * 40, self.output)
         self.assertFalse(self.output.exists())
 
+    def test_output_parent_traversal_rejected_before_directory_creation(self):
+        destination = self.repo / "unused" / ".." / "artifacts" / "release.zip"
+        with self.assertRaisesRegex(ValueError, "UNSAFE_OUTPUT_PATH"):
+            self.fixture_build(self.repo, self.commit, destination)
+        self.assertFalse(self.output.parent.exists())
+
     def test_symlinked_output_ancestor_rejected_before_directory_creation(self):
         external = Path(self.temp.name) / "external"
         external.mkdir()
