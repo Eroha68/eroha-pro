@@ -90,7 +90,9 @@ def load_approved_manifest(path: Path, commit: str,
     if absolute_manifest.is_symlink() or any(parent.is_symlink() for parent in absolute_manifest.parents):
         raise ValueError("MANIFEST_UNAVAILABLE")
     try:
-        fd = os.open(path, os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0))
+        # O_NONBLOCK prevents indefinite blocking on FIFO before fstat rejects it.
+        fd = os.open(path, os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0) |
+                     getattr(os, "O_NONBLOCK", 0))
         with os.fdopen(fd, "rb") as source:
             if not stat.S_ISREG(os.fstat(source.fileno()).st_mode):
                 raise ValueError("MANIFEST_UNSAFE_FILE_TYPE")
