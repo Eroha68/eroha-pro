@@ -1,5 +1,13 @@
 name: EROHA integrated release hold - draft-only regression
 on:
+  push:
+    branches:
+      - security/eroha-integrated-no-go-20261110
+    paths:
+      - '.github/workflows/deploy.yml'
+      - '.github/workflows/eroha_core_ci.yml'
+      - '.github/workflows/tests/test_integrated_release_hold.py'
+      - '.github/workflows/integrated-release-hold-audit.yml'
   pull_request:
     paths:
       - '.github/workflows/deploy.yml'
