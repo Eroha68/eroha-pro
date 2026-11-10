@@ -144,8 +144,14 @@ jobs:
         run: |
           set -euo pipefail
           test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          # Fail closed: these inputs must be supplied by an independently
+          # controlled approval channel, not calculated by this workflow.
+          test -n "${EROHA_APPROVED_MANIFEST_PATH:-}"
+          test -n "${EROHA_APPROVED_MANIFEST_SHA256:-}"
           python3 .github/scripts/build_release_archive.py \
-            --repo . --commit "$GITHUB_SHA" --output artifacts/ErohaSuite_Core.zip
+            --repo . --commit "$GITHUB_SHA" --output artifacts/ErohaSuite_Core.zip \
+            --manifest "$EROHA_APPROVED_MANIFEST_PATH" \
+            --manifest-sha256 "$EROHA_APPROVED_MANIFEST_SHA256"
           test -s artifacts/ErohaSuite_Core.zip
           unzip -t artifacts/ErohaSuite_Core.zip
 
