@@ -11,10 +11,10 @@ import json
 import os
 from pathlib import Path
 import re
+import secrets
 import stat
 import subprocess
 import sys
-import tempfile
 import unicodedata
 import zipfile
 
@@ -232,47 +232,76 @@ def build(repo: Path, commit: str, output: Path,
     # Do not normalize away a traversed symlink/.. component.
     if ".." in output.parts:
         raise ValueError("UNSAFE_OUTPUT_PATH")
-    # Reject any symlinked ancestor before and after creating directories.
-    # This protects static paths, not concurrent adversarial path swaps.
+    # Anchor output directory creation and final replacement to open fds.
+    # A string path can be redirected to another tree after is_symlink().
+    if (os.name != "posix" or not hasattr(os, "O_NOFOLLOW") or
+            not hasattr(os, "O_DIRECTORY") or
+            any(fn not in os.supports_dir_fd
+                for fn in (os.open, os.mkdir, os.replace, os.unlink, os.stat))):
+        raise ValueError("OUTPUT_SAFE_OPEN_UNSUPPORTED")
     absolute_output = Path(os.path.abspath(output))
-    if absolute_output.is_symlink() or any(parent.is_symlink() for parent in absolute_output.parents):
-        raise ValueError("UNSAFE_OUTPUT_PATH")
-    output.parent.mkdir(parents=True, exist_ok=True)
-    if absolute_output.is_symlink() or any(parent.is_symlink() for parent in absolute_output.parents):
-        raise ValueError("UNSAFE_OUTPUT_PATH")
-    temp_path: str | None = None
+    directory_flags = (os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW |
+                       getattr(os, "O_CLOEXEC", 0))
+    parent_fd = None
+    temp_name = None
     total = 0
     try:
-        with tempfile.NamedTemporaryFile(
-            prefix=".eroha-archive-", suffix=".zip",
-            dir=output.parent, delete=False
-        ) as temp:
-            temp_path = temp.name
-        with zipfile.ZipFile(
-            temp_path, "w", compression=zipfile.ZIP_DEFLATED, compresslevel=9,
-            allowZip64=False
-        ) as archive:
-            for name, object_id, mode, expected_size in preflight:
-                blob = git(repo, "cat-file", "blob", object_id)
-                if len(blob) != expected_size:
-                    raise ValueError("GIT_BLOB_SIZE_MISMATCH")
-                total += len(blob)
-                if total > MAX_TOTAL_SIZE:
-                    raise ValueError("ARCHIVE_SIZE_LIMIT")
-                member = zipfile.ZipInfo(name, date_time=(1980, 1, 1, 0, 0, 0))
-                member.create_system = 3
-                member.external_attr = ((0o100755 if mode == "100755" else 0o100644) << 16)
-                member.compress_type = zipfile.ZIP_DEFLATED
-                archive.writestr(member, blob, compress_type=zipfile.ZIP_DEFLATED,
-                                 compresslevel=9)
-        if not zipfile.is_zipfile(temp_path):
-            raise ValueError("INVALID_OUTPUT_ZIP")
-        os.replace(temp_path, output)
-        temp_path = None
+        parent_fd = os.open(absolute_output.anchor, directory_flags)
+        for component in absolute_output.parts[1:-1]:
+            try:
+                next_fd = os.open(component, directory_flags, dir_fd=parent_fd)
+            except FileNotFoundError:
+                os.mkdir(component, mode=0o700, dir_fd=parent_fd)
+                next_fd = os.open(component, directory_flags, dir_fd=parent_fd)
+            os.close(parent_fd)
+            parent_fd = next_fd
+        try:
+            existing = os.stat(absolute_output.name, dir_fd=parent_fd,
+                               follow_symlinks=False)
+            if stat.S_ISLNK(existing.st_mode):
+                raise ValueError("UNSAFE_OUTPUT_PATH")
+        except FileNotFoundError:
+            pass
+        temp_name = ".eroha-archive-" + secrets.token_hex(16) + ".zip"
+        temp_fd = os.open(
+            temp_name, os.O_RDWR | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW |
+            getattr(os, "O_CLOEXEC", 0), mode=0o600, dir_fd=parent_fd,
+        )
+        with os.fdopen(temp_fd, "w+b") as temp_file:
+            with zipfile.ZipFile(
+                temp_file, "w", compression=zipfile.ZIP_DEFLATED, compresslevel=9,
+                allowZip64=False,
+            ) as archive:
+                for name, object_id, mode, expected_size in preflight:
+                    blob = git(repo, "cat-file", "blob", object_id)
+                    if len(blob) != expected_size:
+                        raise ValueError("GIT_BLOB_SIZE_MISMATCH")
+                    total += len(blob)
+                    if total > MAX_TOTAL_SIZE:
+                        raise ValueError("ARCHIVE_SIZE_LIMIT")
+                    member = zipfile.ZipInfo(name, date_time=(1980, 1, 1, 0, 0, 0))
+                    member.create_system = 3
+                    member.external_attr = ((0o100755 if mode == "100755" else 0o100644) << 16)
+                    member.compress_type = zipfile.ZIP_DEFLATED
+                    archive.writestr(member, blob, compress_type=zipfile.ZIP_DEFLATED,
+                                     compresslevel=9)
+            temp_file.flush()
+            if not zipfile.is_zipfile(temp_file):
+                raise ValueError("INVALID_OUTPUT_ZIP")
+        os.replace(temp_name, absolute_output.name,
+                   src_dir_fd=parent_fd, dst_dir_fd=parent_fd)
+        temp_name = None
         return len(selected), total
+    except OSError as exc:
+        raise ValueError("UNSAFE_OUTPUT_PATH") from exc
     finally:
-        if temp_path is not None:
-            Path(temp_path).unlink(missing_ok=True)
+        if parent_fd is not None:
+            if temp_name is not None:
+                try:
+                    os.unlink(temp_name, dir_fd=parent_fd)
+                except FileNotFoundError:
+                    pass
+            os.close(parent_fd)
 
 
 def main() -> int:
