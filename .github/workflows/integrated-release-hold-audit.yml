@@ -7,6 +7,8 @@ on:
       - '.github/workflows/deploy.yml'
       - '.github/workflows/eroha_core_ci.yml'
       - '.github/workflows/tests/test_integrated_release_hold.py'
+      - '.github/scripts/build_release_archive.py'
+      - '.github/scripts/test_build_release_archive.py'
       - 'sync.sh'
       - '.github/workflows/integrated-release-hold-audit.yml'
   pull_request:
@@ -14,6 +16,8 @@ on:
       - '.github/workflows/deploy.yml'
       - '.github/workflows/eroha_core_ci.yml'
       - '.github/workflows/tests/test_integrated_release_hold.py'
+      - '.github/scripts/build_release_archive.py'
+      - '.github/scripts/test_build_release_archive.py'
       - 'sync.sh'
       - '.github/workflows/integrated-release-hold-audit.yml'
 permissions:
@@ -34,6 +38,8 @@ jobs:
           set -euo pipefail
           python3 -B -m unittest discover -s .github/workflows/tests -p 'test_integrated_release_hold.py' -v
           python3 -O -B -m unittest discover -s .github/workflows/tests -p 'test_integrated_release_hold.py' -v
+          python3 -B -m unittest discover -s .github/scripts -p 'test_build_release_archive.py' -v
+          python3 -O -B -m unittest discover -s .github/scripts -p 'test_build_release_archive.py' -v
           echo 'INTEGRATED_CANDIDATE_STATIC_CHECK=PASS_NOT_PRODUCTION'
 
   production-no-go:
