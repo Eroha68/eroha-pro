@@ -33,3 +33,38 @@ jobs:
           python3 -B -m unittest discover -s .github/workflows/tests -p 'test_integrated_release_hold.py' -v
           python3 -O -B -m unittest discover -s .github/workflows/tests -p 'test_integrated_release_hold.py' -v
           echo 'INTEGRATED_CANDIDATE_STATIC_CHECK=PASS_NOT_PRODUCTION'
+
+  production-no-go:
+    name: Production main remains NO-GO until independent authorization
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    steps:
+      - name: Read actual production main without credentials or modifications
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          ref: main
+          persist-credentials: false
+      - name: Record direct publication evidence and prohibit industrial GO
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          deploy = Path(".github/workflows/deploy.yml").read_text(encoding="utf-8")
+          core = Path(".github/workflows/eroha_core_ci.yml").read_text(encoding="utf-8")
+          evidence = {
+              "MAIN_HF_SECRET_REFERENCE": "secrets.HF_TOKEN" in deploy,
+              "MAIN_HF_DIRECT_GIT_PUSH": "git push https://" in deploy,
+              "MAIN_CORE_RELEASE_JOB": "\n  release:" in core,
+              "MAIN_CORE_WRITE_TOKEN": "contents: write" in core,
+              "MAIN_CORE_DIRECT_GIT_PUSH": "git push " in core,
+          }
+          for name, present in evidence.items():
+              print(f"{name}={'PRESENT' if present else 'NOT_FOUND_IN_CHECKED_FILES'}")
+          print("SCOPE=main workflow source inspection only; not exhaustive credentials or permissions audit")
+          print("INDUSTRIAL_AUTHORIZATION=NO-GO; independent Guardian and Broker not verified")
+          PY
+          echo "::error title=EROHA INDUSTRIAL NO-GO::Production main and independent publishing rights remain unaccepted; candidate tests cannot authorize a release."
+          exit 41
