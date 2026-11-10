@@ -84,6 +84,11 @@ def load_approved_manifest(path: Path, commit: str,
     """
     if not re.fullmatch(r"[0-9a-f]{64}", approved_sha256):
         raise ValueError("MANIFEST_DIGEST_INVALID")
+    # Refuse static symlink redirects in any ancestor of the manifest.
+    # O_NOFOLLOW alone covers only the final path component.
+    absolute_manifest = Path(os.path.abspath(path))
+    if absolute_manifest.is_symlink() or any(parent.is_symlink() for parent in absolute_manifest.parents):
+        raise ValueError("MANIFEST_UNAVAILABLE")
     try:
         fd = os.open(path, os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0))
         with os.fdopen(fd, "rb") as source:
