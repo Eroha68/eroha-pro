@@ -10,6 +10,7 @@ on:
       - '.github/scripts/build_release_archive.py'
       - '.github/scripts/test_build_release_archive.py'
       - '.github/scripts/test_release_manifest_policy.py'
+      - 'RELEASE_AUTHORITY_HANDOFF.md'
       - 'sync.sh'
       - '.github/workflows/integrated-release-hold-audit.yml'
   pull_request:
@@ -20,6 +21,7 @@ on:
       - '.github/scripts/build_release_archive.py'
       - '.github/scripts/test_build_release_archive.py'
       - '.github/scripts/test_release_manifest_policy.py'
+      - 'RELEASE_AUTHORITY_HANDOFF.md'
       - 'sync.sh'
       - '.github/workflows/integrated-release-hold-audit.yml'
 permissions:
