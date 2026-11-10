@@ -174,7 +174,7 @@ def build(repo: Path, commit: str, output: Path,
     if commit != actual or not re.fullmatch(r"[0-9a-f]{40}", actual):
         raise ValueError("COMMIT_PIN_MISMATCH")
     tree = git(repo, "ls-tree", "-rz", "--full-tree", commit)
-    selected: list[tuple[str, str]] = []
+    selected: list[tuple[str, str, str]] = []
     seen: set[str] = set()
     for entry in tree.split(b"\0"):
         if not entry:
@@ -192,24 +192,24 @@ def build(repo: Path, commit: str, output: Path,
         if normalized in seen:
             raise ValueError("COLLIDING_ARCHIVE_PATHS")
         seen.add(normalized)
-        selected.append((name, object_id))
+        selected.append((name, object_id, mode))
     # Case-insensitive extraction must not reinterpret a file as a directory.
-    folded_members = {name.casefold() for name, _ in selected}
-    for name, _ in selected:
+    folded_members = {name.casefold() for name, _, _ in selected}
+    for name, _, _ in selected:
         parts = name.casefold().split("/")
         if any("/".join(parts[:depth]) in folded_members
                for depth in range(1, len(parts))):
             raise ValueError("COLLIDING_ARCHIVE_PATHS")
     if not selected or len(selected) > MAX_FILES:
         raise ValueError("INVALID_ARCHIVE_MEMBER_COUNT")
-    if {name for name, _ in selected} != approved_paths:
+    if {name for name, _, _ in selected} != approved_paths:
         raise ValueError("MANIFEST_MEMBER_SET_MISMATCH")
     # Check sizes of ALL committed blobs before reading even the first byte.
     # Git object identity is immutable; a size query cannot enlarge the
     # content but reading a blob with check_output could exhaust RAM.
-    preflight: list[tuple[str, str, int]] = []
+    preflight: list[tuple[str, str, str, int]] = []
     planned_total = 0
-    for name, object_id in selected:
+    for name, object_id, mode in selected:
         size_raw = git(repo, "cat-file", "-s", object_id).decode("ascii").strip()
         if not re.fullmatch(r"[0-9]{1,20}", size_raw):
             raise ValueError("INVALID_GIT_OBJECT_SIZE")
@@ -217,7 +217,7 @@ def build(repo: Path, commit: str, output: Path,
         planned_total += size
         if size > MAX_MEMBER_SIZE or planned_total > MAX_TOTAL_SIZE:
             raise ValueError("ARCHIVE_SIZE_LIMIT")
-        preflight.append((name, object_id, size))
+        preflight.append((name, object_id, mode, size))
     # Do not normalize away a traversed symlink/.. component.
     if ".." in output.parts:
         raise ValueError("UNSAFE_OUTPUT_PATH")
@@ -241,7 +241,7 @@ def build(repo: Path, commit: str, output: Path,
             temp_path, "w", compression=zipfile.ZIP_DEFLATED, compresslevel=9,
             allowZip64=False
         ) as archive:
-            for name, object_id, expected_size in preflight:
+            for name, object_id, mode, expected_size in preflight:
                 blob = git(repo, "cat-file", "blob", object_id)
                 if len(blob) != expected_size:
                     raise ValueError("GIT_BLOB_SIZE_MISMATCH")
@@ -250,7 +250,7 @@ def build(repo: Path, commit: str, output: Path,
                     raise ValueError("ARCHIVE_SIZE_LIMIT")
                 member = zipfile.ZipInfo(name, date_time=(1980, 1, 1, 0, 0, 0))
                 member.create_system = 3
-                member.external_attr = (0o100644 << 16)
+                member.external_attr = ((0o100755 if mode == "100755" else 0o100644) << 16)
                 member.compress_type = zipfile.ZIP_DEFLATED
                 archive.writestr(member, blob, compress_type=zipfile.ZIP_DEFLATED,
                                  compresslevel=9)
