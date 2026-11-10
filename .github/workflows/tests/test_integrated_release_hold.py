@@ -33,6 +33,11 @@ def active_fail_closed(source, job_name, require_always=True):
     block = job_text(source, job_name)
     if not block or "continue-on-error:" in block:
         return False
+    # Bash startup environments can execute commands before exit 41.
+    if re.search(r"(?m)^\s+(?:env|container|services|defaults|strategy|environment|outputs):", block):
+        return False
+    if len(re.findall(r"(?m)^        shell:\s*bash\s*$", block)) != 1:
+        return False
     # A denied job cannot be skipped, or preceded by another executable step.
     conditions = re.findall(r"(?m)^\s+if:\s*(.+?)\s*$", block)
     expected_conditions = ["always()"] if require_always else []
@@ -200,6 +205,34 @@ class IntegratedHoldTests(unittest.TestCase):
         )
         self.assertNotEqual(tampered, HF)
         self.assertFalse(active_fail_closed(tampered, "release-quarantine", require_always=False))
+
+    def test_guardian_bash_env_injection_rejected(self):
+        mutation = CORE.replace(
+            "  guardian-authorization:\n",
+            "  guardian-authorization:\n    env:\n      BASH_ENV: /tmp/injected-startup\n",
+            1,
+        )
+        self.assertNotEqual(mutation, CORE)
+        self.assertFalse(active_fail_closed(mutation, "guardian-authorization"))
+
+    def test_guardian_step_env_injection_rejected(self):
+        mutation = CORE.replace(
+            "      - name: Fail closed until independently managed Guardian is deployed\n",
+            "      - name: Fail closed until independently managed Guardian is deployed\n"
+            "        env:\n          BASH_ENV: /tmp/injected-startup\n",
+            1,
+        )
+        self.assertNotEqual(mutation, CORE)
+        self.assertFalse(active_fail_closed(mutation, "guardian-authorization"))
+
+    def test_hf_bash_env_injection_rejected(self):
+        mutation = HF.replace(
+            "  release-quarantine:\n",
+            "  release-quarantine:\n    env:\n      BASH_ENV: /tmp/injected-startup\n",
+            1,
+        )
+        self.assertNotEqual(mutation, HF)
+        self.assertFalse(active_fail_closed(mutation, "release-quarantine", require_always=False))
 
     def test_guardian_conditional_step_skip_is_detected(self):
         header = "      - name: Fail closed until independently managed Guardian is deployed\n"
