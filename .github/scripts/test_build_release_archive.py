@@ -109,6 +109,16 @@ class ArchiveBoundaryTest(unittest.TestCase):
             build(self.repo, "0" * 40, self.output)
         self.assertFalse(self.output.exists())
 
+    def test_symlinked_output_ancestor_rejected_before_directory_creation(self):
+        external = Path(self.temp.name) / "external"
+        external.mkdir()
+        link = self.repo / "redirect"
+        link.symlink_to(external, target_is_directory=True)
+        destination = link / "nested" / "release.zip"
+        with self.assertRaisesRegex(ValueError, "UNSAFE_OUTPUT_PATH"):
+            build(self.repo, self.commit, destination)
+        self.assertFalse((external / "nested").exists())
+
     def test_size_policy_fails_closed_and_keeps_previous_output(self):
         import build_release_archive
         original = build_release_archive.MAX_MEMBER_SIZE
