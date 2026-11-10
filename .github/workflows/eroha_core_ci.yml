@@ -124,8 +124,8 @@ jobs:
   build-archive:
     name: 📦 Сборка и архивирование ядра Eroha Core
     runs-on: ubuntu-latest
-    needs: [validate-core, powershell-check, eligibility]
-    if: needs.eligibility.outputs.should_release == 'true'
+    needs: [validate-core, powershell-check, eligibility, guardian-authorization]
+    if: ${{ needs.eligibility.outputs.should_release == 'true' && needs.guardian-authorization.result == 'success' }}
     timeout-minutes: 10
     outputs:
       archive_sha256: ${{ steps.checksum.outputs.sha256 }}
@@ -164,7 +164,7 @@ jobs:
   guardian-authorization:
     name: EROHA NO-GO - independent release authorization missing
     runs-on: ubuntu-24.04
-    needs: [eligibility, build-archive]
+    needs: [eligibility]
     if: always()
     timeout-minutes: 3
     permissions:
