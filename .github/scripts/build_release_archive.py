@@ -40,6 +40,10 @@ def git(repo: Path, *args: str) -> bytes:
     env = {key: value for key, value in os.environ.items()
            if not key.upper().startswith("GIT_")}
     env["GIT_NO_REPLACE_OBJECTS"] = "1"
+    # Partial clones must fail on missing objects instead of silently
+    # fetching unreviewed data through a configured promisor remote.
+    env["GIT_NO_LAZY_FETCH"] = "1"
+    env["GIT_OPTIONAL_LOCKS"] = "0"
     env["GIT_CONFIG_NOSYSTEM"] = "1"
     env["GIT_CONFIG_GLOBAL"] = os.devnull
     return subprocess.check_output(
