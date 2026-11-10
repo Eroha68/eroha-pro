@@ -50,7 +50,7 @@ class ArchiveBoundaryTest(unittest.TestCase):
         raw = subprocess.check_output(
             ["git", "-C", str(self.repo), "ls-files", "-z", "--cached"]
         )
-        names = (entry.decode("utf-8") for entry in raw.split(b"\\0") if entry)
+        names = (entry.decode("utf-8") for entry in raw.split(bytes([0])) if entry)
         return frozenset(
             name for name in names
             if not name.lower().startswith(".github/")
