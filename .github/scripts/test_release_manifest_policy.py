@@ -144,6 +144,81 @@ class ApprovedMemberManifestTest(unittest.TestCase):
             load_approved_manifest(redirected, self.commit, pin)
         self.assertFalse(self.output.exists())
 
+    @unittest.skipUnless(
+        os.name == "posix" and hasattr(os, "O_NOFOLLOW") and
+        hasattr(os, "O_DIRECTORY") and os.open in os.supports_dir_fd,
+        "POSIX openat + O_NOFOLLOW required",
+    )
+    def test_manifest_parent_swap_after_open_does_not_redirect_read(self):
+        import build_release_archive as module
+        from unittest.mock import patch
+
+        pin = self.approve(["app.py"])
+        root = Path(self.temp.name)
+        approved_dir = root / "approved-directory"
+        approved_dir.mkdir()
+        trusted = approved_dir / "manifest.json"
+        trusted.write_bytes(self.manifest_path.read_bytes())
+        foreign_dir = root / "foreign-directory"
+        foreign_dir.mkdir()
+        (foreign_dir / "manifest.json").write_bytes(b'{"malicious":"synthetic"}')
+        moved_dir = root / "pinned-open-directory"
+        original_open = os.open
+        swapped = [False]
+
+        def swap_after_open(path, flags, *args, **kwargs):
+            fd = original_open(path, flags, *args, **kwargs)
+            if path == approved_dir.name and not swapped[0]:
+                approved_dir.rename(moved_dir)
+                approved_dir.symlink_to(foreign_dir, target_is_directory=True)
+                swapped[0] = True
+            return fd
+
+        with patch.object(module.os, "open", new=swap_after_open), \
+             patch.object(module.os, "supports_dir_fd",
+                          os.supports_dir_fd | {swap_after_open}):
+            allowed = load_approved_manifest(trusted, self.commit, pin)
+        self.assertTrue(swapped[0])
+        self.assertEqual(allowed, frozenset({"app.py"}))
+        self.assertFalse(self.output.exists())
+
+    @unittest.skipUnless(
+        os.name == "posix" and hasattr(os, "O_NOFOLLOW") and
+        hasattr(os, "O_DIRECTORY") and os.open in os.supports_dir_fd,
+        "POSIX openat + O_NOFOLLOW required",
+    )
+    def test_manifest_parent_swap_before_open_is_rejected(self):
+        import build_release_archive as module
+        from unittest.mock import patch
+
+        pin = self.approve(["app.py"])
+        root = Path(self.temp.name)
+        approved_dir = root / "approved-directory"
+        approved_dir.mkdir()
+        trusted = approved_dir / "manifest.json"
+        trusted.write_bytes(self.manifest_path.read_bytes())
+        foreign_dir = root / "foreign-directory"
+        foreign_dir.mkdir()
+        (foreign_dir / "manifest.json").write_bytes(b'{"malicious":"synthetic"}')
+        moved_dir = root / "moved-approved-directory"
+        original_open = os.open
+        swapped = [False]
+
+        def swap_before_open(path, flags, *args, **kwargs):
+            if path == approved_dir.name and not swapped[0]:
+                approved_dir.rename(moved_dir)
+                approved_dir.symlink_to(foreign_dir, target_is_directory=True)
+                swapped[0] = True
+            return original_open(path, flags, *args, **kwargs)
+
+        with patch.object(module.os, "open", new=swap_before_open), \
+             patch.object(module.os, "supports_dir_fd",
+                          os.supports_dir_fd | {swap_before_open}):
+            with self.assertRaisesRegex(ValueError, "MANIFEST_UNAVAILABLE"):
+                load_approved_manifest(trusted, self.commit, pin)
+        self.assertTrue(swapped[0])
+        self.assertFalse(self.output.exists())
+
     def test_manifest_symlinked_parent_directory_rejected(self):
         pin = self.approve(["app.py"])
         root = Path(self.temp.name)
