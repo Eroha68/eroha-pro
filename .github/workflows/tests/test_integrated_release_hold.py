@@ -40,14 +40,19 @@ class IntegratedHoldTests(unittest.TestCase):
         self.assertIn("independently managed Guardian", CORE)
         self.assertRegex(CORE, r"(?s)guardian-authorization:.*?exit 41")
 
-    def test_core_release_depends_on_guardian(self):
-        self.assertRegex(CORE, r"(?s)\n  release:\n.*?needs:\s*\[build-archive, eligibility, guardian-authorization\]")
-        self.assertIn("needs.eligibility.outputs.should_release == 'true'", CORE)
+    def test_core_release_job_is_absent_until_independent_broker(self):
+        self.assertNotRegex(CORE, r"(?m)^  release:\\s*$")
+        self.assertNotIn("gh release create", CORE)
+        self.assertNotIn("gh release edit", CORE)
+        self.assertNotIn("gh release upload", CORE)
+        self.assertNotIn("git push", CORE)
+        self.assertNotIn("GH_TOKEN:", CORE)
+        self.assertIn("guardian-authorization:", CORE)
 
     def test_no_core_job_receives_write_token_before_broker(self):
         self.assertIn("permissions:\n  contents: read", CORE)
         self.assertNotIn("contents: write", CORE)
-        self.assertRegex(CORE, r"(?s)\n  release:\n.*?permissions:\s*\n\s+contents: read")
+        self.assertIn("guardian-authorization:", CORE)
 
     def test_hf_workflow_has_no_unguarded_deploy_job(self):
         self.assertNotRegex(HF, r"(?m)^  deploy:")
