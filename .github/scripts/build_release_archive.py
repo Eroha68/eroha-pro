@@ -35,8 +35,12 @@ WINDOWS_RESERVED = re.compile(
 
 
 def git(repo: Path, *args: str) -> bytes:
+    # Ignore local git replace refs, which otherwise can change the tree
+    # returned for an unchanged commit SHA (including HEAD).
+    env = os.environ.copy()
+    env["GIT_NO_REPLACE_OBJECTS"] = "1"
     return subprocess.check_output(
-        ["git", "-C", str(repo), *args], stderr=subprocess.PIPE
+        ["git", "-C", str(repo), *args], stderr=subprocess.PIPE, env=env
     )
 
 
