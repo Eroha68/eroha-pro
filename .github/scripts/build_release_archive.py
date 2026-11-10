@@ -155,6 +155,11 @@ def load_approved_manifest(path: Path, commit: str,
         if folded in normalized:
             raise ValueError("MANIFEST_COLLIDING_PATHS")
         normalized.add(folded)
+    for name in files:
+        parts = name.casefold().split("/")
+        if any("/".join(parts[:depth]) in normalized
+               for depth in range(1, len(parts))):
+            raise ValueError("MANIFEST_COLLIDING_PATHS")
     return frozenset(files)
 
 
@@ -188,6 +193,13 @@ def build(repo: Path, commit: str, output: Path,
             raise ValueError("COLLIDING_ARCHIVE_PATHS")
         seen.add(normalized)
         selected.append((name, object_id))
+    # Case-insensitive extraction must not reinterpret a file as a directory.
+    folded_members = {name.casefold() for name, _ in selected}
+    for name, _ in selected:
+        parts = name.casefold().split("/")
+        if any("/".join(parts[:depth]) in folded_members
+               for depth in range(1, len(parts))):
+            raise ValueError("COLLIDING_ARCHIVE_PATHS")
     if not selected or len(selected) > MAX_FILES:
         raise ValueError("INVALID_ARCHIVE_MEMBER_COUNT")
     if {name for name, _ in selected} != approved_paths:
