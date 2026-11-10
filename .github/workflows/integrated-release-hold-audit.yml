@@ -7,12 +7,14 @@ on:
       - '.github/workflows/deploy.yml'
       - '.github/workflows/eroha_core_ci.yml'
       - '.github/workflows/tests/test_integrated_release_hold.py'
+      - 'sync.sh'
       - '.github/workflows/integrated-release-hold-audit.yml'
   pull_request:
     paths:
       - '.github/workflows/deploy.yml'
       - '.github/workflows/eroha_core_ci.yml'
       - '.github/workflows/tests/test_integrated_release_hold.py'
+      - 'sync.sh'
       - '.github/workflows/integrated-release-hold-audit.yml'
 permissions:
   contents: read
@@ -54,12 +56,15 @@ jobs:
           from pathlib import Path
           deploy = Path(".github/workflows/deploy.yml").read_text(encoding="utf-8")
           core = Path(".github/workflows/eroha_core_ci.yml").read_text(encoding="utf-8")
+          sync = Path("sync.sh").read_text(encoding="utf-8")
           evidence = {
               "MAIN_HF_SECRET_REFERENCE": "secrets.HF_TOKEN" in deploy,
               "MAIN_HF_DIRECT_GIT_PUSH": "git push https://" in deploy,
               "MAIN_CORE_RELEASE_JOB": "\n  release:" in core,
               "MAIN_CORE_WRITE_TOKEN": "contents: write" in core,
               "MAIN_CORE_DIRECT_GIT_PUSH": "git push " in core,
+              "MAIN_SYNC_AUTOMATIC_MAIN": 'BRANCH="${1:-main}"' in sync,
+              "MAIN_SYNC_DIRECT_GIT_PUSH": "git push -u origin" in sync,
           }
           for name, present in evidence.items():
               print(f"{name}={'PRESENT' if present else 'NOT_FOUND_IN_CHECKED_FILES'}")
