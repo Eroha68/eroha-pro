@@ -4,13 +4,19 @@
 These tests are structural regression guards, NOT a protected rule, independent
 Guardian attestation or proof that production credentials are inaccessible.
 """
+import os
 import pathlib
 import re
+import subprocess
+import tempfile
 import unittest
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 HF = (ROOT / "deploy.yml").read_text(encoding="utf-8")
 CORE = (ROOT / "eroha_core_ci.yml").read_text(encoding="utf-8")
+SYNC_PATH = ROOT.parent.parent / "sync.sh"
+SYNC = SYNC_PATH.read_text(encoding="utf-8")
+AUDIT = (ROOT / "integrated-release-hold-audit.yml").read_text(encoding="utf-8")
 
 
 def job_text(source, name):
@@ -62,7 +68,63 @@ def active_fail_closed(source, job_name, require_always=True):
     )
 
 
+def active_sync_hold(source):
+    commands = [
+        line.strip()
+        for line in source.splitlines()
+        if line.strip() and not line.lstrip().startswith("#")
+    ]
+    return (
+        len(commands) == 3
+        and commands[0] == "set -euo pipefail"
+        and commands[1].startswith("printf '%s\\n' 'EROHA NO-GO:")
+        and commands[1].endswith(" >&2")
+        and commands[2] == "exit 41"
+    )
+
+
 class IntegratedHoldTests(unittest.TestCase):
+    def test_sync_has_active_fail_closed_without_write_commands(self):
+        self.assertTrue(active_sync_hold(SYNC))
+        self.assertNotRegex(SYNC, r"(?m)^\s*git\s+(push|commit|checkout|add|fetch|pull|stash)")
+        self.assertNotIn("secrets.", SYNC)
+
+    def test_sync_denies_main_and_other_branch_without_using_git(self):
+        with tempfile.TemporaryDirectory(prefix="eroha-sync-hold-test-") as folder:
+            root = pathlib.Path(folder)
+            bin_dir = root / "bin"
+            bin_dir.mkdir()
+            marker = root / "git-called"
+            fake_git = bin_dir / "git"
+            fake_git.write_text(
+                "#!/bin/sh\nprintf 'called' >> \"$EROHA_GIT_MARKER\"\nexit 0\n",
+                encoding="utf-8",
+            )
+            fake_git.chmod(0o755)
+            env = os.environ.copy()
+            env["PATH"] = str(bin_dir) + os.pathsep + env.get("PATH", "")
+            env["EROHA_GIT_MARKER"] = str(marker)
+            for arguments in ((), ("main",), ("test-only",)):
+                with self.subTest(arguments=arguments):
+                    run = subprocess.run(
+                        ["/bin/bash", str(SYNC_PATH), *arguments],
+                        cwd=root, env=env, capture_output=True, text=True, timeout=5,
+                        check=False,
+                    )
+                    self.assertEqual(run.returncode, 41)
+                    self.assertIn("EROHA NO-GO", run.stderr)
+                    self.assertFalse(marker.exists())
+
+    def test_sync_bypass_mutations_rejected(self):
+        self.assertIn("exit 41", SYNC)
+        self.assertFalse(active_sync_hold(SYNC.replace("exit 41", "exit 0", 1)))
+        self.assertFalse(active_sync_hold(SYNC.replace("exit 41", "git push origin main\nexit 41", 1)))
+
+    def test_three_path_audit_triggers_and_production_inventory(self):
+        self.assertEqual(AUDIT.count("- 'sync.sh'"), 2)
+        self.assertIn("MAIN_SYNC_AUTOMATIC_MAIN", AUDIT)
+        self.assertIn("MAIN_SYNC_DIRECT_GIT_PUSH", AUDIT)
+
     def test_both_main_push_workflows_present(self):
         for source in (HF, CORE):
             self.assertRegex(source, r"(?m)^on:\s*$")
