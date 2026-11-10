@@ -29,20 +29,28 @@ def active_fail_closed(source, job_name):
         return False
     if not re.search(r"(?m)^    if: always\(\)\s*$", block):
         return False
-    match = re.search(r"(?m)^        run: \|\s*\n((?:^          .*\n?)+)", block)
-    if match is None:
-        return False
-    commands = [
-        line.strip() for line in match.group(1).splitlines()
-        if line.strip() and not line.lstrip().startswith("#")
-    ]
-    return (
-        len(commands) == 3
-        and commands[0] == "set -euo pipefail"
-        and commands[1].startswith('echo "::error title=EROHA ')
-        and commands[2] == "exit 41"
-    )
 
+    lines = block.splitlines()
+    scripts = []
+    for index, line in enumerate(lines):
+        if line != "        run: |":
+            continue
+        commands = []
+        for subsequent in lines[index + 1:]:
+            if not subsequent.startswith("          "):
+                break
+            command = subsequent.strip()
+            if command and not command.startswith("#"):
+                commands.append(command)
+        scripts.append(commands)
+
+    return (
+        len(scripts) == 1
+        and len(scripts[0]) == 3
+        and scripts[0][0] == "set -euo pipefail"
+        and scripts[0][1].startswith('echo "::error title=EROHA ')
+        and scripts[0][2] == "exit 41"
+    )
 
 
 class IntegratedHoldTests(unittest.TestCase):
