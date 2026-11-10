@@ -106,6 +106,12 @@ class ArchiveBoundaryTest(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "UNSUPPORTED_COMMITTED_FILE_TYPE"):
             self.fixture_build(self.repo, self.commit, self.output)
 
+    def test_case_insensitive_file_directory_collision_rejected(self):
+        self.add_commit("APP.PY/nested.txt", b"synthetic nested file")
+        with self.assertRaisesRegex(ValueError, "COLLIDING_ARCHIVE_PATHS"):
+            self.fixture_build(self.repo, self.commit, self.output)
+        self.assertFalse(self.output.exists())
+
     def test_case_insensitive_collision_rejected(self):
         self.add_commit("App.PY", b"duplicate case")
         with self.assertRaisesRegex(ValueError, "COLLIDING_ARCHIVE_PATHS"):
