@@ -12,6 +12,41 @@ Evidence checked: 2026-11-10. This file describes a migration, not user approval
 - Desktop Commander reported `MacBook-Pro-Ermek.local: Offline`. No native R2/G9/G10 acceptance can be concluded from GitHub.
 - The PR #48 laboratory audit passed 16 checks twice (standard Python and `-O`) in run 42854803892. The production-no-go job deliberately failed with exit code 41 and independently inspected current `main` workflow source.
 
+## 2026-11-11 — verified independent-ownership blocker (read-only audit)
+
+GitHub connector checks of the current repository state:
+- `Eroha68/eroha-pro`: user `Eroha68` has **admin** permission; `main` is `protected: true`; protection-details API returned **403 Resource not accessible by integration**; repository rulesets API returned `[]`. These results do **not** reveal all effective branch exceptions or enterprise policies.
+- `Eroha68/eroha-trusted-ci-gate`: user `Eroha68` also has **admin** permission; `main` is `protected: false`; rulesets API returned **403** with a feature/plan limitation.
+- Draft PR #48 remained unmerged at commit `b7e8b7ef974fbb73496c64fa9152c47677fa4171` when checked.
+- The same GitHub administrative identity spans both repositories. **Independent trust-root custody is not established**. Existing synthetically signed grants, repository separation and passing CI cannot satisfy R2/R4.
+
+**Decision:** FAIL for the demonstrated independent-administrator separation criterion; NO-GO for any industrial release. Do not infer actual compromise. No settings, roles or publishing credentials were changed.
+
+### Independent acceptance evidence: exact tests and their prerequisites
+
+| ID | Scenario / pass condition | Evidence owner | Status |
+| --- | --- | --- | --- |
+| I01 | Independent administrator selected and their scope explicitly approved | Human owner | NOT TESTED |
+| I02 | Proposer attempts to edit protected policy and is denied by GitHub/API | Independent administrator | NOT TESTED |
+| I03 | Proposer attempts to modify Guardian trust-anchor and signer and is denied | Guardian owner | NOT TESTED |
+| I04 | Independent Guardian owner can authorize exact non-production request | Guardian owner | NOT TESTED |
+| I05 | Proposer attempts to obtain Broker publisher token and is denied, without disclosing secrets | Broker owner | NOT TESTED |
+| I06 | Proposer cannot publish a GitHub Release, push tags or deploy to HF outside Broker | Independent auditor | NOT TESTED |
+| I07 | All required status checks and bypass actors are independently inventoried; exceptions verified | Policy administrator | BLOCKED: GitHub protection API 403 |
+| I08 | Signed grant binds exact repo, commit, artifact SHA-256, run, target, action, policy, nonce and expiry | Guardian + Broker owners | NOT TESTED |
+| I09 | Tampered/expired/replayed grants are rejected after Broker restart and concurrent requests | Broker owner | NOT TESTED |
+| I10 | Real per-operation macOS user consent is verified; cancellation denies | Native Mac owner | NOT TESTED |
+| I11 | Unauthorized XPC peer is rejected by signed peer identity | Native Mac owner | NOT TESTED |
+| I12 | Kernel-enforced aggregate CPU/RAM/process/network budget holds across children and restarts | Native Mac owner | NOT TESTED |
+| I13 | An explicitly scoped disposable deployment uses only Broker-held credentials | Broker owner | NOT TESTED |
+| I14 | Remote deployed digest matches signed artifact and independently retained provenance | Independent auditor | NOT TESTED |
+| I15 | Controlled failure triggers tested rollback; remote state and log evidence verified | Broker + auditor | NOT TESTED |
+| I16 | Real user-plan execution and limits are observed without inferring API/Plus entitlements | Subscription owner | NOT TESTED |
+
+These **16 proposed evidence checkpoints are not an exhaustive G7–G10 test plan**. They overlap G1–G6 and R2–R4 and MUST NOT be added numerically to the existing 24 scenarios or 18 A01–F18 items. Conclusive unique-test counting requires a jointly approved ID-to-gate coverage matrix.
+
+**Immediate stop conditions:** do not appoint a second identity by merely renaming an account, do not loosen branch protections to demonstrate a bypass, do not rotate or inspect secret values, do not enable publishing, and do not merge release-hold changes without approved interruption and rollback ownership. In the absence of independently observed I01–I07, remain NO-GO.
+
 ## Non-delegable responsibilities
 
 | Principal | Allowed | Must be denied |
