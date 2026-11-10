@@ -164,5 +164,30 @@ class ArchiveBoundaryTest(unittest.TestCase):
         self.assertFalse(self.output.exists())
 
 
+    def test_tracked_aws_credentials_directory_is_rejected(self):
+        self.add_commit(".aws/credentials", b"[default]\nSYNTHETIC_NOT_REAL\n")
+        with self.assertRaisesRegex(ValueError, "SECRET_LIKE_TRACKED_FILE"):
+            build(self.repo, self.commit, self.output)
+        self.assertFalse(self.output.exists())
+
+    def test_tracked_nested_kube_config_is_rejected(self):
+        self.add_commit("deploy/.kube/config", b"SYNTHETIC_NOT_REAL")
+        with self.assertRaisesRegex(ValueError, "SECRET_LIKE_TRACKED_FILE"):
+            build(self.repo, self.commit, self.output)
+        self.assertFalse(self.output.exists())
+
+    def test_tracked_pypirc_is_rejected(self):
+        self.add_commit(".pypirc", b"[distutils]\npassword=SYNTHETIC_ONLY\n")
+        with self.assertRaisesRegex(ValueError, "SECRET_LIKE_TRACKED_FILE"):
+            build(self.repo, self.commit, self.output)
+        self.assertFalse(self.output.exists())
+
+    def test_case_variant_dotenv_directory_is_rejected(self):
+        self.add_commit("config/.ENV.Staging/key.json", b"SYNTHETIC_NOT_REAL")
+        with self.assertRaisesRegex(ValueError, "SECRET_LIKE_TRACKED_FILE"):
+            build(self.repo, self.commit, self.output)
+        self.assertFalse(self.output.exists())
+
+
 if __name__ == "__main__":
     unittest.main()
