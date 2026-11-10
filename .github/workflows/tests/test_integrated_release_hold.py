@@ -32,7 +32,7 @@ def job_text(source, name):
 def active_fail_closed(source, job_name, require_always=True):
     block = job_text(source, job_name)
     # A workflow-level startup environment applies even to minimal jobs.
-    if re.search(r"(?m)^(?:env|defaults):\\s*$", source):
+    if re.search(r"(?m)^(?:env|defaults):\s*$", source):
         return False
     if not block or "continue-on-error:" in block:
         return False
