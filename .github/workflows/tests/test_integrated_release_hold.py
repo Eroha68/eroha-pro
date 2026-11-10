@@ -27,7 +27,16 @@ def active_fail_closed(source, job_name, require_always=True):
     block = job_text(source, job_name)
     if not block or "continue-on-error:" in block:
         return False
-    if require_always and not re.search(r"(?m)^    if: always\(\)\s*$", block):
+    # A denied job cannot be skipped, or preceded by another executable step.
+    conditions = re.findall(r"(?m)^\s+if:\s*(.+?)\s*$", block)
+    expected_conditions = ["always()"] if require_always else []
+    if conditions != expected_conditions:
+        return False
+    if len(re.findall(r"(?m)^      - ", block)) != 1:
+        return False
+    if re.search(r"(?m)^\s+uses:\s*\S", block):
+        return False
+    if len(re.findall(r"(?m)^        run:\s*\|", block)) != 1:
         return False
 
     lines = block.splitlines()
@@ -89,6 +98,30 @@ class IntegratedHoldTests(unittest.TestCase):
         )
         self.assertNotEqual(tampered, HF)
         self.assertFalse(active_fail_closed(tampered, "release-quarantine", require_always=False))
+
+    def test_hf_conditional_skip_is_detected(self):
+        tampered = HF.replace(
+            "  release-quarantine:\n",
+            "  release-quarantine:\n    if: false\n",
+            1,
+        )
+        self.assertNotEqual(tampered, HF)
+        self.assertFalse(active_fail_closed(tampered, "release-quarantine", require_always=False))
+
+    def test_hf_extra_action_step_is_detected(self):
+        tampered = HF.replace(
+            "    steps:\n",
+            "    steps:\n      - uses: actions/checkout@v4\n",
+            1,
+        )
+        self.assertNotEqual(tampered, HF)
+        self.assertFalse(active_fail_closed(tampered, "release-quarantine", require_always=False))
+
+    def test_guardian_conditional_step_skip_is_detected(self):
+        header = "      - name: Fail closed until independently managed Guardian is deployed\n"
+        self.assertIn(header, CORE)
+        tampered = CORE.replace(header, header + "        if: false\n", 1)
+        self.assertFalse(active_fail_closed(tampered, "guardian-authorization"))
 
     def test_core_guardian_fails_closed(self):
         self.assertTrue(active_fail_closed(CORE, "guardian-authorization"))
