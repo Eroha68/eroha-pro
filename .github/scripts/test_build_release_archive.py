@@ -126,6 +126,30 @@ class ArchiveBoundaryTest(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "UNSAFE_ARCHIVE_PATH"):
             self.fixture_build(self.repo, self.commit, self.output)
 
+    def test_git_replace_ref_cannot_substitute_pinned_commit_tree(self):
+        original_commit = self.commit
+        original_bytes = (self.repo / "app.py").read_bytes()
+        (self.repo / "app.py").write_bytes(b"synthetic substituted content")
+        git(self.repo, "add", "app.py")
+        replacement_tree = git(self.repo, "write-tree")
+        replacement_commit = git(self.repo, "commit-tree", replacement_tree, "-m",
+                                 "Synthetic replace-only commit")
+        git(self.repo, "reset", "--hard", original_commit)
+        git(self.repo, "replace", original_commit, replacement_commit)
+        self.addCleanup(lambda: subprocess.run(
+            ["git", "-C", str(self.repo), "replace", "-d", original_commit],
+            capture_output=True, check=False,
+        ))
+        self.assertEqual(git(self.repo, "rev-parse", "HEAD"), original_commit)
+        self.assertNotEqual(
+            subprocess.check_output(
+                ["git", "-C", str(self.repo), "show", f"{original_commit}:app.py"]
+            ), original_bytes,
+        )
+        self.fixture_build(self.repo, original_commit, self.output)
+        with zipfile.ZipFile(self.output) as archive:
+            self.assertEqual(archive.read("app.py"), original_bytes)
+
     def test_commit_pin_mismatch_rejected(self):
         with self.assertRaisesRegex(ValueError, "COMMIT_PIN_MISMATCH"):
             self.fixture_build(self.repo, "0" * 40, self.output)
