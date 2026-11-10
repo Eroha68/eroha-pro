@@ -250,6 +250,12 @@ def main() -> int:
     parser.add_argument("--manifest-sha256", required=True)
     args = parser.parse_args()
     try:
+        # Never allow the ZIP destination to overwrite its authorization input.
+        # Catch both lexical aliases and existing hardlinks to the same inode.
+        if (os.path.abspath(args.output) == os.path.abspath(args.manifest) or
+                (args.output.exists() and args.manifest.exists() and
+                 os.path.samefile(args.output, args.manifest))):
+            raise ValueError("MANIFEST_OUTPUT_COLLISION")
         approved_paths = load_approved_manifest(args.manifest, args.commit,
                                                  args.manifest_sha256)
         count, total = build(args.repo, args.commit, args.output,
