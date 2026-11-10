@@ -181,6 +181,41 @@ class ApprovedMemberManifestTest(unittest.TestCase):
         self.assertIn("--manifest", process.stderr)
         self.assertFalse(self.output.exists())
 
+    def test_cli_refuses_output_overwriting_approved_manifest(self):
+        pin = self.approve(["app.py"])
+        before = self.manifest_path.read_bytes()
+        for destination in (
+            self.manifest_path,
+            self.manifest_path.parent / "." / self.manifest_path.name,
+        ):
+            with self.subTest(destination=str(destination)):
+                process = subprocess.run(
+                    [sys.executable, str(self.builder), "--repo", str(self.repo),
+                     "--commit", self.commit, "--output", str(destination),
+                     "--manifest", str(self.manifest_path),
+                     "--manifest-sha256", pin],
+                    capture_output=True, text=True, check=False, timeout=10,
+                )
+                self.assertEqual(process.returncode, 41)
+                self.assertIn("MANIFEST_OUTPUT_COLLISION", process.stderr)
+                self.assertEqual(self.manifest_path.read_bytes(), before)
+
+    def test_cli_refuses_hardlink_alias_of_manifest(self):
+        pin = self.approve(["app.py"])
+        alias = Path(self.temp.name) / "approved-manifest-alias.json"
+        os.link(self.manifest_path, alias)
+        before = self.manifest_path.read_bytes()
+        process = subprocess.run(
+            [sys.executable, str(self.builder), "--repo", str(self.repo),
+             "--commit", self.commit, "--output", str(alias),
+             "--manifest", str(self.manifest_path), "--manifest-sha256", pin],
+            capture_output=True, text=True, check=False, timeout=10,
+        )
+        self.assertEqual(process.returncode, 41)
+        self.assertIn("MANIFEST_OUTPUT_COLLISION", process.stderr)
+        self.assertEqual(self.manifest_path.read_bytes(), before)
+        self.assertEqual(alias.read_bytes(), before)
+
     def test_cli_exact_manifest_positive(self):
         pin = self.approve(["app.py"])
         process = subprocess.run(
