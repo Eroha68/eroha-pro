@@ -130,6 +130,7 @@ class ArchiveBoundaryTest(unittest.TestCase):
         import build_release_archive as module
         from unittest.mock import patch
 
+        approved = self.approved_fixture_paths()
         underlying = module.subprocess.check_output
         git_environments = []
 
@@ -139,7 +140,7 @@ class ArchiveBoundaryTest(unittest.TestCase):
             return underlying(*args, **kwargs)
 
         with patch.object(module.subprocess, "check_output", side_effect=inspect_git):
-            self.fixture_build(self.repo, self.commit, self.output)
+            build(self.repo, self.commit, self.output, approved)
         self.assertTrue(git_environments)
         for env in git_environments:
             self.assertEqual(env.get("GIT_NO_LAZY_FETCH"), "1")
