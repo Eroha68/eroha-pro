@@ -1,0 +1,51 @@
+name: EROHA exact release member manifest (LAB ONLY)
+on:
+  push:
+    branches:
+      - research/archive-approved-manifest-20261110
+  pull_request:
+    branches:
+      - research/archive-preflight-bounds-20261110
+
+permissions:
+  contents: read
+
+jobs:
+  manifest-lab:
+    if: github.event_name == 'push' && github.ref == 'refs/heads/research/archive-approved-manifest-20261110'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 6
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout research-only source
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          persist-credentials: false
+      - name: Test strict manifest verification, ZIP boundaries and no-approval refusal
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 -m py_compile .github/scripts/build_release_archive.py .github/scripts/test_release_manifest_policy.py
+          python3 -B -m unittest discover -s .github/scripts -p 'test_*.py' -v
+          echo "RELEASE_MANIFEST_NORMAL_PASS"
+          python3 -O -B -m unittest discover -s .github/scripts -p 'test_*.py' -v
+          echo "RELEASE_MANIFEST_OPTIMIZED_PASS"
+
+  reporter:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 3
+    permissions:
+      actions: read
+      contents: read
+    steps:
+      - name: Read exact push test result without executing PR code
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          gh api -X GET "/repos/$GITHUB_REPOSITORY/actions/runs" \
+            -f branch=research/archive-approved-manifest-20261110 -f event=push -f per_page=10 \
+            --jq '.workflow_runs | map(select(.path | contains("archive-approved-manifest-lab.yml"))) | .[0] | "PUSH_RUN_ID=\(.id) PUSH_STATUS=\(.status) PUSH_CONCLUSION=\(.conclusion)"'
