@@ -35,10 +35,13 @@ WINDOWS_RESERVED = re.compile(
 
 
 def git(repo: Path, *args: str) -> bytes:
-    # Ignore local git replace refs, which otherwise can change the tree
-    # returned for an unchanged commit SHA (including HEAD).
-    env = os.environ.copy()
+    # Do not inherit caller-controlled Git discovery, object-store or
+    # config overrides. These can redirect reads away from the pinned repo.
+    env = {key: value for key, value in os.environ.items()
+           if not key.upper().startswith("GIT_")}
     env["GIT_NO_REPLACE_OBJECTS"] = "1"
+    env["GIT_CONFIG_NOSYSTEM"] = "1"
+    env["GIT_CONFIG_GLOBAL"] = os.devnull
     return subprocess.check_output(
         ["git", "-C", str(repo), *args], stderr=subprocess.PIPE, env=env
     )
