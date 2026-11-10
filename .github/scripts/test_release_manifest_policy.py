@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 from pathlib import Path
 import subprocess
 import sys
@@ -138,6 +139,21 @@ class ApprovedMemberManifestTest(unittest.TestCase):
         redirected = alias / self.manifest_path.name
         with self.assertRaisesRegex(ValueError, "MANIFEST_UNAVAILABLE"):
             load_approved_manifest(redirected, self.commit, pin)
+        self.assertFalse(self.output.exists())
+
+    @unittest.skipUnless(hasattr(os, "mkfifo"), "POSIX FIFO required")
+    def test_named_pipe_manifest_fails_closed_without_blocking(self):
+        self.manifest_path.unlink(missing_ok=True)
+        os.mkfifo(self.manifest_path)
+        process = subprocess.run(
+            [sys.executable, str(self.builder), "--repo", str(self.repo),
+             "--commit", self.commit, "--output", str(self.output),
+             "--manifest", str(self.manifest_path),
+             "--manifest-sha256", "0" * 64],
+            capture_output=True, text=True, check=False, timeout=5,
+        )
+        self.assertEqual(process.returncode, 41)
+        self.assertIn("MANIFEST_UNSAFE_FILE_TYPE", process.stderr)
         self.assertFalse(self.output.exists())
 
     def test_boolean_schema_is_not_integer(self):
