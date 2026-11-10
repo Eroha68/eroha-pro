@@ -215,13 +215,13 @@ class IntegratedHoldTests(unittest.TestCase):
             block = job_text(CORE, job_name)
             self.assertIsNotNone(block)
             checkout_steps = re.findall(
-                r"(?m)^        uses: actions/checkout@[^\\n]+$",
+                r"(?m)^        uses: actions/checkout@[^\n]+$",
                 block,
             )
             self.assertEqual(checkout_steps, ["        " + pinned])
             self.assertRegex(
                 block,
-                r"(?m)^        uses: actions/checkout@[^\\n]+\\n        with:\\n(?:(?:          [^\\n]+\\n)*)          persist-credentials: false$",
+                r"(?m)^        uses: actions/checkout@[^\n]+\n        with:\n(?:(?:          [^\n]+\n)*)          persist-credentials: false$",
             )
 
     def test_build_is_blocked_until_guardian_succeeds(self):
