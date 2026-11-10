@@ -126,6 +126,26 @@ class ArchiveBoundaryTest(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "UNSAFE_ARCHIVE_PATH"):
             self.fixture_build(self.repo, self.commit, self.output)
 
+    def test_git_reads_disable_promisor_lazy_fetch_and_optional_locks(self):
+        import build_release_archive as module
+        from unittest.mock import patch
+
+        underlying = module.subprocess.check_output
+        git_environments = []
+
+        def inspect_git(*args, **kwargs):
+            if args and args[0] and args[0][0] == "git":
+                git_environments.append(kwargs["env"])
+            return underlying(*args, **kwargs)
+
+        with patch.object(module.subprocess, "check_output", side_effect=inspect_git):
+            self.fixture_build(self.repo, self.commit, self.output)
+        self.assertTrue(git_environments)
+        for env in git_environments:
+            self.assertEqual(env.get("GIT_NO_LAZY_FETCH"), "1")
+            self.assertEqual(env.get("GIT_NO_REPLACE_OBJECTS"), "1")
+            self.assertEqual(env.get("GIT_OPTIONAL_LOCKS"), "0")
+
     def test_inherited_git_environment_cannot_redirect_object_reads(self):
         from unittest.mock import patch
 
