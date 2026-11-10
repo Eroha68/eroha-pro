@@ -182,8 +182,10 @@ jobs:
     runs-on: ubuntu-latest
     needs: [build-archive, eligibility, guardian-authorization]
     if: needs.eligibility.outputs.should_release == 'true'
+    # Hold: no GitHub publisher credentials while the independent Broker is absent.
+    # Even an accidental Guardian job success cannot grant this job write access.
     permissions:
-      contents: write
+      contents: read
     steps:
       - name: 📥 Скачиваем репозиторий с тэгами
         uses: actions/checkout@v4
