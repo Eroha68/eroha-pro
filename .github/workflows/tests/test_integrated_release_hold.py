@@ -44,9 +44,10 @@ class IntegratedHoldTests(unittest.TestCase):
         self.assertRegex(CORE, r"(?s)\n  release:\n.*?needs:\s*\[build-archive, eligibility, guardian-authorization\]")
         self.assertIn("needs.eligibility.outputs.should_release == 'true'", CORE)
 
-    def test_write_token_not_available_to_other_core_jobs(self):
+    def test_no_core_job_receives_write_token_before_broker(self):
         self.assertIn("permissions:\n  contents: read", CORE)
-        self.assertEqual(CORE.count("contents: write"), 1)
+        self.assertNotIn("contents: write", CORE)
+        self.assertRegex(CORE, r"(?s)\n  release:\n.*?permissions:\s*\n\s+contents: read")
 
     def test_hf_workflow_has_no_unguarded_deploy_job(self):
         self.assertNotRegex(HF, r"(?m)^  deploy:")
