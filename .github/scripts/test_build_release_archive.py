@@ -259,6 +259,70 @@ class ArchiveBoundaryTest(unittest.TestCase):
             self.fixture_build(self.repo, self.commit, destination)
         self.assertFalse((external / "nested").exists())
 
+    @unittest.skipUnless(
+        os.name == "posix" and hasattr(os, "O_NOFOLLOW") and
+        hasattr(os, "O_DIRECTORY") and os.open in os.supports_dir_fd,
+        "POSIX directory-fd isolation required",
+    )
+    def test_output_parent_swap_before_open_fails_closed(self):
+        import build_release_archive as module
+        from unittest.mock import patch
+
+        external = Path(self.temp.name) / "outside"
+        external.mkdir()
+        self.output.parent.mkdir()
+        relocated = self.repo / "relocated-artifacts"
+        original_open = os.open
+        swapped = [False]
+
+        def swap_before_open(path, flags, *args, **kwargs):
+            if path == self.output.parent.name and not swapped[0]:
+                self.output.parent.rename(relocated)
+                self.output.parent.symlink_to(external, target_is_directory=True)
+                swapped[0] = True
+            return original_open(path, flags, *args, **kwargs)
+
+        with patch.object(module.os, "open", new=swap_before_open), \
+             patch.object(module.os, "supports_dir_fd",
+                          os.supports_dir_fd | {swap_before_open}):
+            with self.assertRaisesRegex(ValueError, "UNSAFE_OUTPUT_PATH"):
+                self.fixture_build(self.repo, self.commit, self.output)
+        self.assertTrue(swapped[0])
+        self.assertFalse((external / self.output.name).exists())
+        self.assertFalse((relocated / self.output.name).exists())
+
+    @unittest.skipUnless(
+        os.name == "posix" and hasattr(os, "O_NOFOLLOW") and
+        hasattr(os, "O_DIRECTORY") and os.open in os.supports_dir_fd,
+        "POSIX directory-fd isolation required",
+    )
+    def test_output_parent_swap_after_open_keeps_pinned_zip(self):
+        import build_release_archive as module
+        from unittest.mock import patch
+
+        external = Path(self.temp.name) / "outside"
+        external.mkdir()
+        relocated = self.repo / "relocated-artifacts"
+        original_replace = os.replace
+        swapped = [False]
+
+        def swap_at_replace(src, dst, *args, **kwargs):
+            if not swapped[0]:
+                self.output.parent.rename(relocated)
+                self.output.parent.symlink_to(external, target_is_directory=True)
+                swapped[0] = True
+            return original_replace(src, dst, *args, **kwargs)
+
+        with patch.object(module.os, "replace", side_effect=swap_at_replace):
+            self.fixture_build(self.repo, self.commit, self.output)
+        self.assertTrue(swapped[0])
+        self.assertFalse((external / self.output.name).exists())
+        pinned = relocated / self.output.name
+        self.assertTrue(zipfile.is_zipfile(pinned))
+        with zipfile.ZipFile(pinned) as archive:
+            self.assertEqual(archive.read("app.py"),
+                             b"print('committed')\n")
+
     def test_size_policy_fails_closed_and_keeps_previous_output(self):
         import build_release_archive
         original = build_release_archive.MAX_MEMBER_SIZE
