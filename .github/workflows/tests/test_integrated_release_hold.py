@@ -212,11 +212,11 @@ class IntegratedHoldTests(unittest.TestCase):
         build_job = job_text(CORE, "build-archive")
         self.assertIsNotNone(guardian)
         self.assertIsNotNone(build_job)
-        self.assertRegex(guardian, r"(?m)^    needs: \\[eligibility\\]$")
+        self.assertRegex(guardian, r"(?m)^    needs: \[eligibility\]$")
         self.assertNotIn("build-archive", guardian)
         self.assertRegex(
             build_job,
-            r"(?m)^    needs: \\[validate-core, powershell-check, eligibility, guardian-authorization\\]$",
+            r"(?m)^    needs: \[validate-core, powershell-check, eligibility, guardian-authorization\]$",
         )
         self.assertIn("needs.guardian-authorization.result == 'success'", build_job)
         self.assertTrue(active_fail_closed(CORE, "guardian-authorization"))
