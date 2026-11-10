@@ -98,21 +98,32 @@ def load_approved_manifest(path: Path, commit: str,
     # Do not normalize away a traversed symlink/.. component.
     if ".." in path.parts:
         raise ValueError("MANIFEST_UNAVAILABLE")
-    # Refuse static symlink redirects in any ancestor of the manifest.
-    # O_NOFOLLOW alone covers only the final path component.
+    # Anchor every directory lookup to an already opened directory fd.
+    # A path-wide is_symlink() precheck is racy: an ancestor can change
+    # between that check and the final open().
+    if (os.name != "posix" or not hasattr(os, "O_NOFOLLOW") or
+            not hasattr(os, "O_DIRECTORY") or os.open not in os.supports_dir_fd):
+        raise ValueError("MANIFEST_SAFE_OPEN_UNSUPPORTED")
     absolute_manifest = Path(os.path.abspath(path))
-    if absolute_manifest.is_symlink() or any(parent.is_symlink() for parent in absolute_manifest.parents):
-        raise ValueError("MANIFEST_UNAVAILABLE")
+    dir_flags = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW | getattr(os, "O_CLOEXEC", 0)
+    file_flags = os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK | getattr(os, "O_CLOEXEC", 0)
+    dir_fd = None
     try:
-        # O_NONBLOCK prevents indefinite blocking on FIFO before fstat rejects it.
-        fd = os.open(path, os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0) |
-                     getattr(os, "O_NONBLOCK", 0))
+        dir_fd = os.open(absolute_manifest.anchor, dir_flags)
+        for component in absolute_manifest.parts[1:-1]:
+            child_fd = os.open(component, dir_flags, dir_fd=dir_fd)
+            os.close(dir_fd)
+            dir_fd = child_fd
+        fd = os.open(absolute_manifest.name, file_flags, dir_fd=dir_fd)
         with os.fdopen(fd, "rb") as source:
             if not stat.S_ISREG(os.fstat(source.fileno()).st_mode):
                 raise ValueError("MANIFEST_UNSAFE_FILE_TYPE")
             raw = source.read(MAX_MANIFEST_SIZE + 1)
     except OSError as exc:
         raise ValueError("MANIFEST_UNAVAILABLE") from exc
+    finally:
+        if dir_fd is not None:
+            os.close(dir_fd)
     if not raw or len(raw) > MAX_MANIFEST_SIZE:
         raise ValueError("MANIFEST_SIZE_LIMIT")
     if hashlib.sha256(raw).hexdigest() != approved_sha256:
