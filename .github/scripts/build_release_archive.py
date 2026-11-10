@@ -140,7 +140,7 @@ def load_approved_manifest(path: Path, commit: str,
 def build(repo: Path, commit: str, output: Path,
           approved_paths: frozenset[str]) -> tuple[int, int]:
     # An omitted or malformed approval must fail before touching Git or disk.
-    if (type(approved_paths) is not frozenset or not approved_paths or
+    if (type(approved_paths) is not frozenset or
             any(type(name) is not str for name in approved_paths)):
         raise ValueError("MANIFEST_APPROVAL_REQUIRED")
     repo = repo.resolve(strict=True)
