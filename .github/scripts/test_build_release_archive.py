@@ -130,6 +130,7 @@ class ArchiveBoundaryTest(unittest.TestCase):
         from unittest.mock import patch
 
         original = (self.repo / "app.py").read_bytes()
+        approved = self.approved_fixture_paths()
         with patch.dict(os.environ, {
             "GIT_DIR": str(self.repo / "nonexistent-foreign-git-dir"),
             "GIT_WORK_TREE": str(self.repo / "other-worktree"),
@@ -139,7 +140,7 @@ class ArchiveBoundaryTest(unittest.TestCase):
             "GIT_CONFIG_KEY_0": "core.bare",
             "GIT_CONFIG_VALUE_0": "true",
         }):
-            self.fixture_build(self.repo, self.commit, self.output)
+            build(self.repo, self.commit, self.output, approved)
         with zipfile.ZipFile(self.output) as archive:
             self.assertEqual(archive.read("app.py"), original)
 
