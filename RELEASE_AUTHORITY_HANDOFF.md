@@ -87,6 +87,30 @@ T01–T08 are a **dependency crosswalk**, not eight new independent tests to add
 
 **Immediate safe implementation posture:** Keep `guardian-authorization` at `exit 41`, keep `build-archive` blocked and DO NOT merge this research PR. A later authorized implementation should replace the single hardcoded Guardian gate with separately owned A and C trust checks; no current code author may self-approve an external trust root or enable publishing. A real isolated build only follows verified ownership and approval, not this document alone.
 
+## 2026-11-11 — executable workflow transition blocker and verified bypass inventory
+
+Read-only comparison of PR #48 and **current production `main`** (source, not live secret-execution proof):
+
+| Interface or path | Current candidate behavior | Blocking acceptance condition |
+| --- | --- | --- |
+| `build-archive` | Depends on a single `guardian-authorization` returning `exit 41` | Two distinct, independently controlled stages: signed permission to build *then* signed release permission for actual artifact digest |
+| `build_release_archive.py` CLI | Requires `--manifest` and `--manifest-sha256`; candidate workflow passes neither | Independently supplied, digest-pinned commit-bound manifest must be verified BEFORE reading candidate bytes |
+| `eroha_core_ci.yml` on production `main` | Release job, `contents: write`, `git push` found in reviewed source | Remove all non-Broker publishing permissions and verify Proposer denied real publish |
+| `deploy.yml` on production `main` | `secrets.HF_TOKEN` and direct `git push` found in reviewed source | Move publishing authority to a separate Broker principal; independently reject direct HF deployment |
+| `sync.sh` on production `main` | Defaults to `main`, executes `git push` | Inventory real invokers and credentials; verify forbidden branch/tag/release writes and preserve an authorized nonpublishing sync mode if needed |
+
+**Important distinction:** A GitHub-hosted green test of a proposer-editable workflow cannot certify these owner-controlled restrictions. The observed `admin` permission for `Eroha68` in both repositories is a confirmed separation blocker. GitHub's effective branch protection could not be fully inspected because the protection API returned HTTP 403. No actual unauthorized publish attempt or production credential access was performed.
+
+### Release transition invariants / acceptance order
+
+1. **Before building:** separate administrator and policy custody verified, proposer write-denial evidenced; Guardian A verified for exact commit and approved manifest.
+2. **Before final approval:** B builds in an isolated credential-free environment and captures the real immutable ZIP digest, run identity and trusted provenance. A is NOT a release grant.
+3. **Before publishing:** Guardian C binds B's exact archive SHA-256 to target, TTL, policy, nonce and action; Broker independently verifies the complete grant against a separately pinned key and atomic replay ledger.
+4. **Before industrial GO:** Proposer denied GitHub Release/tag and HF writes by real permissions; a single authorized disposable release and tested rollback have independent evidence.
+5. **At every stage:** missing inputs, ambiguous rights, outdated policies, skipped dependency, unreadable evidence or invalid digest mean DENY. Do not infer authority from a locally generated manifest hash.
+
+**Status:** Existing draft code has not implemented A/B/C/D as independent security principals. The workflow would fail to call the manifest-required CLI even if a future editor changed the Guardian job to success. This is a verified transition defect, not a reason to lift the present `exit 41`. NO-GO remains mandatory.
+
 ## Non-delegable responsibilities
 
 | Principal | Allowed | Must be denied |
