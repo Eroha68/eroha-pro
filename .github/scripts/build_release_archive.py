@@ -98,6 +98,20 @@ def build(repo: Path, commit: str, output: Path) -> tuple[int, int]:
         selected.append((name, object_id))
     if not selected or len(selected) > MAX_FILES:
         raise ValueError("INVALID_ARCHIVE_MEMBER_COUNT")
+    # Check sizes of ALL committed blobs before reading even the first byte.
+    # Git object identity is immutable; a size query cannot enlarge the
+    # content but reading a blob with check_output could exhaust RAM.
+    preflight: list[tuple[str, str, int]] = []
+    planned_total = 0
+    for name, object_id in selected:
+        size_raw = git(repo, "cat-file", "-s", object_id).decode("ascii").strip()
+        if not re.fullmatch(r"[0-9]{1,20}", size_raw):
+            raise ValueError("INVALID_GIT_OBJECT_SIZE")
+        size = int(size_raw)
+        planned_total += size
+        if size > MAX_MEMBER_SIZE or planned_total > MAX_TOTAL_SIZE:
+            raise ValueError("ARCHIVE_SIZE_LIMIT")
+        preflight.append((name, object_id, size))
     output.parent.mkdir(parents=True, exist_ok=True)
     if output.is_symlink() or output.parent.is_symlink():
         raise ValueError("UNSAFE_OUTPUT_PATH")
@@ -113,10 +127,12 @@ def build(repo: Path, commit: str, output: Path) -> tuple[int, int]:
             temp_path, "w", compression=zipfile.ZIP_DEFLATED, compresslevel=9,
             allowZip64=False
         ) as archive:
-            for name, object_id in selected:
+            for name, object_id, expected_size in preflight:
                 blob = git(repo, "cat-file", "blob", object_id)
+                if len(blob) != expected_size:
+                    raise ValueError("GIT_BLOB_SIZE_MISMATCH")
                 total += len(blob)
-                if len(blob) > MAX_MEMBER_SIZE or total > MAX_TOTAL_SIZE:
+                if total > MAX_TOTAL_SIZE:
                     raise ValueError("ARCHIVE_SIZE_LIMIT")
                 member = zipfile.ZipInfo(name, date_time=(1980, 1, 1, 0, 0, 0))
                 member.create_system = 3
