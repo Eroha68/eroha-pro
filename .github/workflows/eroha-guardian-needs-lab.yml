@@ -1,0 +1,196 @@
+name: EROHA Guardian dependencies - synthetic read-only acceptance
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/eroha-guardian-needs-lab.yml'
+permissions:
+  contents: read
+jobs:
+  eligibility_skip:
+    runs-on: ubuntu-24.04
+    outputs:
+      should_release: ${{ steps.decide.outputs.should_release }}
+    steps:
+      - id: decide
+        run: echo 'should_release=false' >> "$GITHUB_OUTPUT"
+  build_skip:
+    needs: [eligibility_skip]
+    if: ${{ needs.eligibility_skip.outputs.should_release == 'true' }}
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Simulated build (no artifact or publication)
+        run: 'echo synthetic-build-ok'
+  guardian_skip:
+    needs: [eligibility_skip, build_skip]
+    if: ${{ !cancelled() && needs.eligibility_skip.result == 'success' && needs.eligibility_skip.outputs.should_release == 'true' && needs.build_skip.result == 'success' }}
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Synthetic Guardian decision
+        run: 'echo synthetic-guardian-allowed'
+  release_skip:
+    needs: [eligibility_skip, build_skip, guardian_skip]
+    if: ${{ !cancelled() && needs.eligibility_skip.result == 'success' && needs.eligibility_skip.outputs.should_release == 'true' && needs.build_skip.result == 'success' && needs.guardian_skip.result == 'success' }}
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+    steps:
+      - name: Record hypothetical eligibility only
+        run: echo 'ELIGIBLE_ONLY_NO_RELEASE_NO_NETWORK'
+  verify_skip:
+    needs: [eligibility_skip, build_skip, guardian_skip, release_skip]
+    if: ${{ always() }}
+    runs-on: ubuntu-24.04
+    env:
+      BUILD_RESULT: ${{ needs.build_skip.result }}
+      GUARDIAN_RESULT: ${{ needs.guardian_skip.result }}
+      RELEASE_RESULT: ${{ needs.release_skip.result }}
+    steps:
+      - name: Check observed GitHub job graph
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$BUILD_RESULT" = 'skipped'
+          test "$GUARDIAN_RESULT" = 'skipped'
+          test "$RELEASE_RESULT" = 'skipped'
+          echo 'GRAPH_CONTRACT_skip=PASS'
+  eligibility_build_failure:
+    runs-on: ubuntu-24.04
+    outputs:
+      should_release: ${{ steps.decide.outputs.should_release }}
+    steps:
+      - id: decide
+        run: echo 'should_release=true' >> "$GITHUB_OUTPUT"
+  build_build_failure:
+    needs: [eligibility_build_failure]
+    if: ${{ needs.eligibility_build_failure.outputs.should_release == 'true' }}
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Simulated build (no artifact or publication)
+        run: 'exit 37'
+  guardian_build_failure:
+    needs: [eligibility_build_failure, build_build_failure]
+    if: ${{ !cancelled() && needs.eligibility_build_failure.result == 'success' && needs.eligibility_build_failure.outputs.should_release == 'true' && needs.build_build_failure.result == 'success' }}
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Synthetic Guardian decision
+        run: 'echo synthetic-guardian-allowed'
+  release_build_failure:
+    needs: [eligibility_build_failure, build_build_failure, guardian_build_failure]
+    if: ${{ !cancelled() && needs.eligibility_build_failure.result == 'success' && needs.eligibility_build_failure.outputs.should_release == 'true' && needs.build_build_failure.result == 'success' && needs.guardian_build_failure.result == 'success' }}
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+    steps:
+      - name: Record hypothetical eligibility only
+        run: echo 'ELIGIBLE_ONLY_NO_RELEASE_NO_NETWORK'
+  verify_build_failure:
+    needs: [eligibility_build_failure, build_build_failure, guardian_build_failure, release_build_failure]
+    if: ${{ always() }}
+    runs-on: ubuntu-24.04
+    env:
+      BUILD_RESULT: ${{ needs.build_build_failure.result }}
+      GUARDIAN_RESULT: ${{ needs.guardian_build_failure.result }}
+      RELEASE_RESULT: ${{ needs.release_build_failure.result }}
+    steps:
+      - name: Check observed GitHub job graph
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$BUILD_RESULT" = 'failure'
+          test "$GUARDIAN_RESULT" = 'skipped'
+          test "$RELEASE_RESULT" = 'skipped'
+          echo 'GRAPH_CONTRACT_build_failure=PASS'
+  eligibility_guardian_deny:
+    runs-on: ubuntu-24.04
+    outputs:
+      should_release: ${{ steps.decide.outputs.should_release }}
+    steps:
+      - id: decide
+        run: echo 'should_release=true' >> "$GITHUB_OUTPUT"
+  build_guardian_deny:
+    needs: [eligibility_guardian_deny]
+    if: ${{ needs.eligibility_guardian_deny.outputs.should_release == 'true' }}
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Simulated build (no artifact or publication)
+        run: 'echo synthetic-build-ok'
+  guardian_guardian_deny:
+    needs: [eligibility_guardian_deny, build_guardian_deny]
+    if: ${{ !cancelled() && needs.eligibility_guardian_deny.result == 'success' && needs.eligibility_guardian_deny.outputs.should_release == 'true' && needs.build_guardian_deny.result == 'success' }}
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Synthetic Guardian decision
+        run: 'exit 41'
+  release_guardian_deny:
+    needs: [eligibility_guardian_deny, build_guardian_deny, guardian_guardian_deny]
+    if: ${{ !cancelled() && needs.eligibility_guardian_deny.result == 'success' && needs.eligibility_guardian_deny.outputs.should_release == 'true' && needs.build_guardian_deny.result == 'success' && needs.guardian_guardian_deny.result == 'success' }}
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+    steps:
+      - name: Record hypothetical eligibility only
+        run: echo 'ELIGIBLE_ONLY_NO_RELEASE_NO_NETWORK'
+  verify_guardian_deny:
+    needs: [eligibility_guardian_deny, build_guardian_deny, guardian_guardian_deny, release_guardian_deny]
+    if: ${{ always() }}
+    runs-on: ubuntu-24.04
+    env:
+      BUILD_RESULT: ${{ needs.build_guardian_deny.result }}
+      GUARDIAN_RESULT: ${{ needs.guardian_guardian_deny.result }}
+      RELEASE_RESULT: ${{ needs.release_guardian_deny.result }}
+    steps:
+      - name: Check observed GitHub job graph
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$BUILD_RESULT" = 'success'
+          test "$GUARDIAN_RESULT" = 'failure'
+          test "$RELEASE_RESULT" = 'skipped'
+          echo 'GRAPH_CONTRACT_guardian_deny=PASS'
+  eligibility_approved:
+    runs-on: ubuntu-24.04
+    outputs:
+      should_release: ${{ steps.decide.outputs.should_release }}
+    steps:
+      - id: decide
+        run: echo 'should_release=true' >> "$GITHUB_OUTPUT"
+  build_approved:
+    needs: [eligibility_approved]
+    if: ${{ needs.eligibility_approved.outputs.should_release == 'true' }}
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Simulated build (no artifact or publication)
+        run: 'echo synthetic-build-ok'
+  guardian_approved:
+    needs: [eligibility_approved, build_approved]
+    if: ${{ !cancelled() && needs.eligibility_approved.result == 'success' && needs.eligibility_approved.outputs.should_release == 'true' && needs.build_approved.result == 'success' }}
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Synthetic Guardian decision
+        run: 'echo synthetic-guardian-allowed'
+  release_approved:
+    needs: [eligibility_approved, build_approved, guardian_approved]
+    if: ${{ !cancelled() && needs.eligibility_approved.result == 'success' && needs.eligibility_approved.outputs.should_release == 'true' && needs.build_approved.result == 'success' && needs.guardian_approved.result == 'success' }}
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+    steps:
+      - name: Record hypothetical eligibility only
+        run: echo 'ELIGIBLE_ONLY_NO_RELEASE_NO_NETWORK'
+  verify_approved:
+    needs: [eligibility_approved, build_approved, guardian_approved, release_approved]
+    if: ${{ always() }}
+    runs-on: ubuntu-24.04
+    env:
+      BUILD_RESULT: ${{ needs.build_approved.result }}
+      GUARDIAN_RESULT: ${{ needs.guardian_approved.result }}
+      RELEASE_RESULT: ${{ needs.release_approved.result }}
+    steps:
+      - name: Check observed GitHub job graph
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$BUILD_RESULT" = 'success'
+          test "$GUARDIAN_RESULT" = 'success'
+          test "$RELEASE_RESULT" = 'success'
+          echo 'GRAPH_CONTRACT_approved=PASS'
