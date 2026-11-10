@@ -189,5 +189,51 @@ class ArchiveBoundaryTest(unittest.TestCase):
         self.assertFalse(self.output.exists())
 
 
+    def test_oversized_git_blob_is_rejected_before_reading_it(self):
+        import build_release_archive as module
+        from unittest.mock import patch
+
+        original_limit = module.MAX_MEMBER_SIZE
+        self.addCleanup(setattr, module, "MAX_MEMBER_SIZE", original_limit)
+        module.MAX_MEMBER_SIZE = 4
+        original_git = module.git
+        read_attempts = []
+
+        def counted_git(repo, *args):
+            if args[:2] == ("cat-file", "blob"):
+                read_attempts.append(args)
+                raise AssertionError("UNBOUNDED_BLOB_READ_ATTEMPTED")
+            return original_git(repo, *args)
+
+        with patch.object(module, "git", side_effect=counted_git):
+            with self.assertRaisesRegex(ValueError, "ARCHIVE_SIZE_LIMIT"):
+                build(self.repo, self.commit, self.output)
+        self.assertEqual([], read_attempts)
+        self.assertFalse(self.output.exists())
+
+    def test_total_limit_is_enforced_before_any_git_blob_read(self):
+        import build_release_archive as module
+        from unittest.mock import patch
+
+        self.add_commit("second.txt", b"12345")
+        old_total = module.MAX_TOTAL_SIZE
+        self.addCleanup(setattr, module, "MAX_TOTAL_SIZE", old_total)
+        module.MAX_TOTAL_SIZE = 20  # existing app.py 19 + second.txt 5 = 24
+        original_git = module.git
+        read_attempts = []
+
+        def counted_git(repo, *args):
+            if args[:2] == ("cat-file", "blob"):
+                read_attempts.append(args)
+                raise AssertionError("BLOB_READ_BEFORE_TOTAL_PREFLIGHT")
+            return original_git(repo, *args)
+
+        with patch.object(module, "git", side_effect=counted_git):
+            with self.assertRaisesRegex(ValueError, "ARCHIVE_SIZE_LIMIT"):
+                build(self.repo, self.commit, self.output)
+        self.assertEqual([], read_attempts)
+        self.assertFalse(self.output.exists())
+
+
 if __name__ == "__main__":
     unittest.main()
