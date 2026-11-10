@@ -22,7 +22,7 @@ jobs:
       should_release: ${{ steps.check.outputs.should_release }}
     steps:
       - name: Read complete tags without persisted checkout credentials
-        uses: actions/checkout@v4
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
         with:
           fetch-depth: 0
           persist-credentials: false
@@ -59,7 +59,9 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: 📥 Скачиваем репозиторий
-        uses: actions/checkout@v4
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          persist-credentials: false
 
       - name: ✅ Проверяем YAML-файлы
         run: |
@@ -92,7 +94,9 @@ jobs:
     runs-on: windows-latest
     steps:
       - name: 📥 Скачиваем репозиторий
-        uses: actions/checkout@v4
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          persist-credentials: false
 
       - name: ⚙️ Проверяем синтаксис PowerShell-файлов
         shell: pwsh
@@ -131,7 +135,9 @@ jobs:
       archive_sha256: ${{ steps.checksum.outputs.sha256 }}
     steps:
       - name: 📥 Скачиваем репозиторий
-        uses: actions/checkout@v4
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          persist-credentials: false
 
       - name: Build pinned release archive from Git blobs only
         shell: bash
