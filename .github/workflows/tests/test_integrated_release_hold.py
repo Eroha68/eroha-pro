@@ -274,6 +274,26 @@ class IntegratedHoldTests(unittest.TestCase):
                 r"(?m)^        uses: actions/checkout@[^\n]+\n        with:\n(?:(?:          [^\n]+\n)*)          persist-credentials: false$",
             )
 
+    def test_build_requires_externally_supplied_manifest_inputs(self):
+        block = job_text(CORE, "build-archive")
+        self.assertIsNotNone(block)
+        self.assertIn('test -n "${EROHA_APPROVED_MANIFEST_PATH:-}"', block)
+        self.assertIn('test -n "${EROHA_APPROVED_MANIFEST_SHA256:-}"', block)
+        self.assertIn('--manifest "$EROHA_APPROVED_MANIFEST_PATH"', block)
+        self.assertIn('--manifest-sha256 "$EROHA_APPROVED_MANIFEST_SHA256"', block)
+        self.assertNotRegex(CORE, r"(?m)^\s+EROHA_APPROVED_MANIFEST_(PATH|SHA256):")
+
+    def test_build_manifest_bypass_mutation_detected(self):
+        block = job_text(CORE, "build-archive")
+        self.assertIsNotNone(block)
+        for required in ('test -n "${EROHA_APPROVED_MANIFEST_PATH:-}"',
+                         'test -n "${EROHA_APPROVED_MANIFEST_SHA256:-}"',
+                         '--manifest "$EROHA_APPROVED_MANIFEST_PATH"',
+                         '--manifest-sha256 "$EROHA_APPROVED_MANIFEST_SHA256"'):
+            with self.subTest(required=required):
+                tampered = block.replace(required, "", 1)
+                self.assertNotIn(required, tampered)
+
     def test_build_is_blocked_until_guardian_succeeds(self):
         guardian = job_text(CORE, "guardian-authorization")
         build_job = job_text(CORE, "build-archive")
