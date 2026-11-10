@@ -137,5 +137,103 @@ class ArchiveBoundaryTest(unittest.TestCase):
             build(self.repo, self.commit, self.output)
 
 
+    def test_tracked_nested_dotenv_directory_must_not_leak(self):
+        self.add_commit(".env/credentials.txt",
+                        b"EROHA_SYNTHETIC_SECRET_SENTINEL_NOT_REAL")
+        with self.assertRaisesRegex(ValueError, "SECRET_LIKE_TRACKED_FILE"):
+            build(self.repo, self.commit, self.output)
+        self.assertFalse(self.output.exists())
+
+    def test_tracked_nested_environment_variant_must_not_leak(self):
+        self.add_commit("config/.env.production/credentials.json",
+                        b"EROHA_SYNTHETIC_SECRET_SENTINEL_NOT_REAL")
+        with self.assertRaisesRegex(ValueError, "SECRET_LIKE_TRACKED_FILE"):
+            build(self.repo, self.commit, self.output)
+        self.assertFalse(self.output.exists())
+
+    def test_tracked_npmrc_must_not_leak(self):
+        self.add_commit(".npmrc", b"//registry.example.invalid/:_authToken=SYNTHETIC_ONLY")
+        with self.assertRaisesRegex(ValueError, "SECRET_LIKE_TRACKED_FILE"):
+            build(self.repo, self.commit, self.output)
+        self.assertFalse(self.output.exists())
+
+    def test_tracked_ssh_private_key_without_suffix_must_not_leak(self):
+        self.add_commit(".ssh/id_ed25519", b"SYNTHETIC_PRIVATE_KEY_NOT_REAL")
+        with self.assertRaisesRegex(ValueError, "SECRET_LIKE_TRACKED_FILE"):
+            build(self.repo, self.commit, self.output)
+        self.assertFalse(self.output.exists())
+
+
+    def test_tracked_aws_credentials_directory_is_rejected(self):
+        self.add_commit(".aws/credentials", b"[default]\nSYNTHETIC_NOT_REAL\n")
+        with self.assertRaisesRegex(ValueError, "SECRET_LIKE_TRACKED_FILE"):
+            build(self.repo, self.commit, self.output)
+        self.assertFalse(self.output.exists())
+
+    def test_tracked_nested_kube_config_is_rejected(self):
+        self.add_commit("deploy/.kube/config", b"SYNTHETIC_NOT_REAL")
+        with self.assertRaisesRegex(ValueError, "SECRET_LIKE_TRACKED_FILE"):
+            build(self.repo, self.commit, self.output)
+        self.assertFalse(self.output.exists())
+
+    def test_tracked_pypirc_is_rejected(self):
+        self.add_commit(".pypirc", b"[distutils]\npassword=SYNTHETIC_ONLY\n")
+        with self.assertRaisesRegex(ValueError, "SECRET_LIKE_TRACKED_FILE"):
+            build(self.repo, self.commit, self.output)
+        self.assertFalse(self.output.exists())
+
+    def test_case_variant_dotenv_directory_is_rejected(self):
+        self.add_commit("config/.ENV.Staging/key.json", b"SYNTHETIC_NOT_REAL")
+        with self.assertRaisesRegex(ValueError, "SECRET_LIKE_TRACKED_FILE"):
+            build(self.repo, self.commit, self.output)
+        self.assertFalse(self.output.exists())
+
+
+    def test_oversized_git_blob_is_rejected_before_reading_it(self):
+        import build_release_archive as module
+        from unittest.mock import patch
+
+        original_limit = module.MAX_MEMBER_SIZE
+        self.addCleanup(setattr, module, "MAX_MEMBER_SIZE", original_limit)
+        module.MAX_MEMBER_SIZE = 4
+        original_git = module.git
+        read_attempts = []
+
+        def counted_git(repo, *args):
+            if args[:2] == ("cat-file", "blob"):
+                read_attempts.append(args)
+                raise AssertionError("UNBOUNDED_BLOB_READ_ATTEMPTED")
+            return original_git(repo, *args)
+
+        with patch.object(module, "git", side_effect=counted_git):
+            with self.assertRaisesRegex(ValueError, "ARCHIVE_SIZE_LIMIT"):
+                build(self.repo, self.commit, self.output)
+        self.assertEqual([], read_attempts)
+        self.assertFalse(self.output.exists())
+
+    def test_total_limit_is_enforced_before_any_git_blob_read(self):
+        import build_release_archive as module
+        from unittest.mock import patch
+
+        self.add_commit("second.txt", b"12345")
+        old_total = module.MAX_TOTAL_SIZE
+        self.addCleanup(setattr, module, "MAX_TOTAL_SIZE", old_total)
+        module.MAX_TOTAL_SIZE = 20  # existing app.py 19 + second.txt 5 = 24
+        original_git = module.git
+        read_attempts = []
+
+        def counted_git(repo, *args):
+            if args[:2] == ("cat-file", "blob"):
+                read_attempts.append(args)
+                raise AssertionError("BLOB_READ_BEFORE_TOTAL_PREFLIGHT")
+            return original_git(repo, *args)
+
+        with patch.object(module, "git", side_effect=counted_git):
+            with self.assertRaisesRegex(ValueError, "ARCHIVE_SIZE_LIMIT"):
+                build(self.repo, self.commit, self.output)
+        self.assertEqual([], read_attempts)
+        self.assertFalse(self.output.exists())
+
+
 if __name__ == "__main__":
     unittest.main()
