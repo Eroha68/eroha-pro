@@ -278,6 +278,38 @@ class ArchiveBoundaryTest(unittest.TestCase):
         self.assertEqual(hashlib.sha256(first.read_bytes()).digest(),
                          hashlib.sha256(second.read_bytes()).digest())
 
+    def test_archive_digest_stable_across_independent_working_copies(self):
+        approved = self.approved_fixture_paths()
+        first = self.repo / "artifacts" / "first.zip"
+        build(self.repo, self.commit, first, approved)
+        clone = Path(self.temp.name) / "independent-clone"
+        subprocess.run(
+            ["git", "clone", "-q", "--no-local", str(self.repo), str(clone)],
+            check=True, capture_output=True, timeout=30,
+        )
+        (clone / "app.py").write_bytes(b"synthetic changed worktree")
+        (clone / ".env").write_bytes(b"synthetic secret not committed")
+        second = clone / "different-output" / "second.zip"
+        build(clone, self.commit, second, approved)
+        self.assertEqual(hashlib.sha256(first.read_bytes()).hexdigest(),
+                         hashlib.sha256(second.read_bytes()).hexdigest())
+        with zipfile.ZipFile(second) as archive:
+            self.assertEqual(archive.read("app.py"), b"print('committed')\\n")
+
+    def test_git_executable_mode_changes_archive_digest(self):
+        approved = self.approved_fixture_paths()
+        first = self.repo / "artifacts" / "plain.zip"
+        build(self.repo, self.commit, first, approved)
+        plain_digest = hashlib.sha256(first.read_bytes()).hexdigest()
+        git(self.repo, "update-index", "--chmod=+x", "app.py")
+        git(self.repo, "commit", "-qm", "Change mode only")
+        self.commit = git(self.repo, "rev-parse", "HEAD")
+        executable = self.repo / "artifacts" / "executable.zip"
+        build(self.repo, self.commit, executable, approved)
+        self.assertNotEqual(plain_digest, hashlib.sha256(executable.read_bytes()).hexdigest())
+        with zipfile.ZipFile(executable) as archive:
+            self.assertEqual(archive.getinfo("app.py").external_attr >> 16, 0o100755)
+
     def test_only_excluded_files_fails_closed(self):
         (self.repo / "app.py").unlink()
         git(self.repo, "add", "-u")
