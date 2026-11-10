@@ -126,6 +126,30 @@ class ArchiveBoundaryTest(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "UNSAFE_ARCHIVE_PATH"):
             self.fixture_build(self.repo, self.commit, self.output)
 
+    def test_real_blobless_partial_clone_rejects_missing_git_blob(self):
+        """No network fetch is allowed during archive assembly."""
+        original_blob = git(self.repo, "rev-parse", "HEAD:app.py")
+        approved = self.approved_fixture_paths()
+        git(self.repo, "config", "uploadpack.allowFilter", "true")
+        partial = Path(self.temp.name) / "partial-clone"
+        subprocess.run(
+            ["git", "clone", "-q", "--no-checkout", "--filter=blob:none",
+             self.repo.as_uri(), str(partial)],
+            check=True, capture_output=True, timeout=30,
+        )
+        disabled_fetch_env = os.environ.copy()
+        disabled_fetch_env["GIT_NO_LAZY_FETCH"] = "1"
+        missing = subprocess.run(
+            ["git", "-C", str(partial), "cat-file", "-e", original_blob],
+            env=disabled_fetch_env, check=False, capture_output=True, timeout=10,
+        )
+        self.assertNotEqual(missing.returncode, 0,
+                            "PRECONDITION_FAILED_BLOB_IS_ALREADY_PRESENT")
+        rejected_output = partial / "artifacts" / "release.zip"
+        with self.assertRaises(subprocess.CalledProcessError):
+            build(partial, self.commit, rejected_output, approved)
+        self.assertFalse(rejected_output.exists())
+
     def test_git_reads_disable_promisor_lazy_fetch_and_optional_locks(self):
         import build_release_archive as module
         from unittest.mock import patch
