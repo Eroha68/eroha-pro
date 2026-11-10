@@ -207,6 +207,35 @@ class IntegratedHoldTests(unittest.TestCase):
         tampered = CORE.replace(header, header + "        if: false\n", 1)
         self.assertFalse(active_fail_closed(tampered, "guardian-authorization"))
 
+    def test_build_is_blocked_until_guardian_succeeds(self):
+        guardian = job_text(CORE, "guardian-authorization")
+        build_job = job_text(CORE, "build-archive")
+        self.assertIsNotNone(guardian)
+        self.assertIsNotNone(build_job)
+        self.assertRegex(guardian, r"(?m)^    needs: \\[eligibility\\]$")
+        self.assertNotIn("build-archive", guardian)
+        self.assertRegex(
+            build_job,
+            r"(?m)^    needs: \\[validate-core, powershell-check, eligibility, guardian-authorization\\]$",
+        )
+        self.assertIn("needs.guardian-authorization.result == 'success'", build_job)
+        self.assertTrue(active_fail_closed(CORE, "guardian-authorization"))
+
+    def test_mutated_build_without_guardian_dependency_rejected(self):
+        self.assertIn("eligibility, guardian-authorization]", CORE)
+        bad = CORE.replace(
+            "eligibility, guardian-authorization]",
+            "eligibility]",
+            1,
+        )
+        self.assertNotIn("guardian-authorization]", job_text(bad, "build-archive"))
+
+    def test_mutated_build_guardian_result_skip_rejected(self):
+        original = "needs.guardian-authorization.result == 'success'"
+        self.assertIn(original, CORE)
+        bad = CORE.replace(original, "true", 1)
+        self.assertNotIn(original, job_text(bad, "build-archive"))
+
     def test_core_guardian_fails_closed(self):
         self.assertTrue(active_fail_closed(CORE, "guardian-authorization"))
         self.assertIn("independently managed Guardian", CORE)
