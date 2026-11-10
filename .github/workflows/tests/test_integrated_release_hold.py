@@ -46,7 +46,8 @@ class IntegratedHoldTests(unittest.TestCase):
         self.assertNotIn("gh release edit", CORE)
         self.assertNotIn("gh release upload", CORE)
         self.assertNotIn("git push", CORE)
-        self.assertNotIn("GH_TOKEN:", CORE)
+        self.assertEqual(CORE.count("GH_TOKEN:"), 1)
+        self.assertIn("gh release view", CORE)
         self.assertIn("guardian-authorization:", CORE)
 
     def test_no_core_job_receives_write_token_before_broker(self):
