@@ -6,9 +6,12 @@ This check is not an independent Guardian or a signature of the build.
 from __future__ import annotations
 
 import argparse
+import hashlib
+import json
 import os
 from pathlib import Path
 import re
+import stat
 import subprocess
 import sys
 import tempfile
@@ -18,6 +21,7 @@ import zipfile
 MAX_FILES = 10_000
 MAX_MEMBER_SIZE = 32 * 1024 * 1024
 MAX_TOTAL_SIZE = 256 * 1024 * 1024
+MAX_MANIFEST_SIZE = 128 * 1024
 FORBIDDEN_COMPONENTS = {".git", ".github", "artifacts", "__pycache__"}
 FORBIDDEN_EXTENSIONS = {".pem", ".p12", ".pfx", ".key", ".kdbx"}
 # Sensitive credential locations without necessarily dangerous file extensions.
@@ -71,7 +75,70 @@ def is_forbidden(path: str) -> bool:
     return False
 
 
-def build(repo: Path, commit: str, output: Path) -> tuple[int, int]:
+def load_approved_manifest(path: Path, commit: str,
+                           approved_sha256: str) -> frozenset[str]:
+    """Validate an exact-path allowlist against an out-of-band digest pin.
+
+    This does NOT prove who approved the digest. Independent key custody
+    and approval remain separate industrial requirements.
+    """
+    if not re.fullmatch(r"[0-9a-f]{64}", approved_sha256):
+        raise ValueError("MANIFEST_DIGEST_INVALID")
+    try:
+        fd = os.open(path, os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0))
+        with os.fdopen(fd, "rb") as source:
+            if not stat.S_ISREG(os.fstat(source.fileno()).st_mode):
+                raise ValueError("MANIFEST_UNSAFE_FILE_TYPE")
+            raw = source.read(MAX_MANIFEST_SIZE + 1)
+    except OSError as exc:
+        raise ValueError("MANIFEST_UNAVAILABLE") from exc
+    if not raw or len(raw) > MAX_MANIFEST_SIZE:
+        raise ValueError("MANIFEST_SIZE_LIMIT")
+    if hashlib.sha256(raw).hexdigest() != approved_sha256:
+        raise ValueError("MANIFEST_HASH_MISMATCH")
+
+    def no_duplicate_keys(items):
+        result = {}
+        for key, value in items:
+            if key in result:
+                raise ValueError("MANIFEST_DUPLICATE_KEY")
+            result[key] = value
+        return result
+
+    def no_nonfinite(value):
+        raise ValueError("MANIFEST_NONFINITE_NUMBER")
+
+    manifest = json.loads(raw.decode("utf-8", "strict"),
+                          object_pairs_hook=no_duplicate_keys,
+                          parse_constant=no_nonfinite)
+    if (type(manifest) is not dict or
+            frozenset(manifest) != {"schema", "commit", "files"} or
+            type(manifest["schema"]) is not int or
+            manifest["schema"] != 1 or
+            type(manifest["commit"]) is not str or
+            manifest["commit"] != commit):
+        raise ValueError("MANIFEST_SCHEMA_OR_COMMIT_MISMATCH")
+    files = manifest["files"]
+    if (type(files) is not list or not 0 < len(files) <= MAX_FILES or
+            any(type(name) is not str for name in files)):
+        raise ValueError("MANIFEST_FILE_LIST_INVALID")
+    if files != sorted(files) or len(files) != len(set(files)):
+        raise ValueError("MANIFEST_DUPLICATE_OR_UNSORTED_FILES")
+    normalized = set()
+    for name in files:
+        safe_name(name)
+        if (is_forbidden(name) or
+                any(part in (".", "..") for part in name.split("/"))):
+            raise ValueError("MANIFEST_FORBIDDEN_PATH")
+        folded = unicodedata.normalize("NFC", name).casefold()
+        if folded in normalized:
+            raise ValueError("MANIFEST_COLLIDING_PATHS")
+        normalized.add(folded)
+    return frozenset(files)
+
+
+def build(repo: Path, commit: str, output: Path,
+          approved_paths: frozenset[str] | None = None) -> tuple[int, int]:
     repo = repo.resolve(strict=True)
     actual = git(repo, "rev-parse", "--verify", "HEAD").decode("ascii").strip()
     if commit != actual or not re.fullmatch(r"[0-9a-f]{40}", actual):
@@ -98,6 +165,9 @@ def build(repo: Path, commit: str, output: Path) -> tuple[int, int]:
         selected.append((name, object_id))
     if not selected or len(selected) > MAX_FILES:
         raise ValueError("INVALID_ARCHIVE_MEMBER_COUNT")
+    if (approved_paths is not None and
+            {name for name, _ in selected} != approved_paths):
+        raise ValueError("MANIFEST_MEMBER_SET_MISMATCH")
     # Check sizes of ALL committed blobs before reading even the first byte.
     # Git object identity is immutable; a size query cannot enlarge the
     # content but reading a blob with check_output could exhaust RAM.
@@ -155,9 +225,14 @@ def main() -> int:
     parser.add_argument("--repo", type=Path, default=Path.cwd())
     parser.add_argument("--commit", required=True)
     parser.add_argument("--output", required=True, type=Path)
+    parser.add_argument("--manifest", required=True, type=Path)
+    parser.add_argument("--manifest-sha256", required=True)
     args = parser.parse_args()
     try:
-        count, total = build(args.repo, args.commit, args.output)
+        approved_paths = load_approved_manifest(args.manifest, args.commit,
+                                                 args.manifest_sha256)
+        count, total = build(args.repo, args.commit, args.output,
+                             approved_paths=approved_paths)
     except (ValueError, OSError, subprocess.CalledProcessError,
             UnicodeError, zipfile.BadZipFile, OverflowError) as error:
         print(f"RELEASE_ARCHIVE_REJECTED:{type(error).__name__}:{error}",
