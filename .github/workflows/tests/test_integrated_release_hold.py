@@ -95,6 +95,20 @@ def active_sync_hold(source):
     )
 
 
+def build_requires_external_manifest(source):
+    block = job_text(source, "build-archive")
+    if block is None:
+        return False
+    required = (
+        'test -n "${EROHA_APPROVED_MANIFEST_PATH:-}"',
+        'test -n "${EROHA_APPROVED_MANIFEST_SHA256:-}"',
+        '--manifest "$EROHA_APPROVED_MANIFEST_PATH"',
+        '--manifest-sha256 "$EROHA_APPROVED_MANIFEST_SHA256"',
+    )
+    return (all(block.count(item) == 1 for item in required) and
+            not re.search(r"(?m)^\\s+EROHA_APPROVED_MANIFEST_(PATH|SHA256):", source))
+
+
 class IntegratedHoldTests(unittest.TestCase):
     def test_sync_has_active_fail_closed_without_write_commands(self):
         self.assertTrue(active_sync_hold(SYNC))
@@ -275,24 +289,17 @@ class IntegratedHoldTests(unittest.TestCase):
             )
 
     def test_build_requires_externally_supplied_manifest_inputs(self):
-        block = job_text(CORE, "build-archive")
-        self.assertIsNotNone(block)
-        self.assertIn('test -n "${EROHA_APPROVED_MANIFEST_PATH:-}"', block)
-        self.assertIn('test -n "${EROHA_APPROVED_MANIFEST_SHA256:-}"', block)
-        self.assertIn('--manifest "$EROHA_APPROVED_MANIFEST_PATH"', block)
-        self.assertIn('--manifest-sha256 "$EROHA_APPROVED_MANIFEST_SHA256"', block)
-        self.assertNotRegex(CORE, r"(?m)^\s+EROHA_APPROVED_MANIFEST_(PATH|SHA256):")
+        self.assertTrue(build_requires_external_manifest(CORE))
 
     def test_build_manifest_bypass_mutation_detected(self):
-        block = job_text(CORE, "build-archive")
-        self.assertIsNotNone(block)
         for required in ('test -n "${EROHA_APPROVED_MANIFEST_PATH:-}"',
                          'test -n "${EROHA_APPROVED_MANIFEST_SHA256:-}"',
                          '--manifest "$EROHA_APPROVED_MANIFEST_PATH"',
                          '--manifest-sha256 "$EROHA_APPROVED_MANIFEST_SHA256"'):
             with self.subTest(required=required):
-                tampered = block.replace(required, "", 1)
-                self.assertNotIn(required, tampered)
+                mutated = CORE.replace(required, "", 1)
+                self.assertNotEqual(mutated, CORE)
+                self.assertFalse(build_requires_external_manifest(mutated))
 
     def test_build_is_blocked_until_guardian_succeeds(self):
         guardian = job_text(CORE, "guardian-authorization")
