@@ -31,6 +31,9 @@ def job_text(source, name):
 
 def active_fail_closed(source, job_name, require_always=True):
     block = job_text(source, job_name)
+    # A workflow-level startup environment applies even to minimal jobs.
+    if re.search(r"(?m)^(?:env|defaults):\\s*$", source):
+        return False
     if not block or "continue-on-error:" in block:
         return False
     # Bash startup environments can execute commands before exit 41.
@@ -205,6 +208,20 @@ class IntegratedHoldTests(unittest.TestCase):
         )
         self.assertNotEqual(tampered, HF)
         self.assertFalse(active_fail_closed(tampered, "release-quarantine", require_always=False))
+
+    def test_workflow_level_bash_env_injection_rejected(self):
+        for source, job, always in (
+            (CORE, "guardian-authorization", True),
+            (HF, "release-quarantine", False),
+        ):
+            with self.subTest(job=job):
+                mutated = source.replace(
+                    "permissions:\n",
+                    "env:\n  BASH_ENV: /tmp/injected-startup\npermissions:\n",
+                    1,
+                )
+                self.assertNotEqual(mutated, source)
+                self.assertFalse(active_fail_closed(mutated, job, require_always=always))
 
     def test_guardian_bash_env_injection_rejected(self):
         mutation = CORE.replace(
