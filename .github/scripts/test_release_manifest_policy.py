@@ -131,6 +131,13 @@ class ApprovedMemberManifestTest(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "MANIFEST_UNAVAILABLE"):
             self.loaded(pin)
 
+    def test_manifest_parent_traversal_rejected_before_read(self):
+        pin = self.approve(["app.py"])
+        redirected = Path(self.temp.name) / "unused" / ".." / self.manifest_path.name
+        with self.assertRaisesRegex(ValueError, "MANIFEST_UNAVAILABLE"):
+            load_approved_manifest(redirected, self.commit, pin)
+        self.assertFalse(self.output.exists())
+
     def test_manifest_symlinked_parent_directory_rejected(self):
         pin = self.approve(["app.py"])
         root = Path(self.temp.name)
