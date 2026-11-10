@@ -59,11 +59,16 @@ def active_fail_closed(source, job_name, require_always=True):
                 commands.append(command)
         scripts.append(commands)
 
+    expected_echo = {
+        "release-quarantine": 'echo "::error title=EROHA HF deployment NO-GO::Direct Hugging Face deploy is disabled until independent Guardian approval, protected environment, and credential rotation are independently verified."',
+        "guardian-authorization": 'echo "::error title=EROHA Guardian NO-GO::No independently signed, non-replayable release authorization from a separately controlled Guardian is configured."',
+    }.get(job_name)
     return (
-        len(scripts) == 1
+        expected_echo is not None
+        and len(scripts) == 1
         and len(scripts[0]) == 3
         and scripts[0][0] == "set -euo pipefail"
-        and scripts[0][1].startswith('echo "::error title=EROHA ')
+        and scripts[0][1] == expected_echo
         and scripts[0][2] == "exit 41"
     )
 
@@ -77,8 +82,7 @@ def active_sync_hold(source):
     return (
         len(commands) == 3
         and commands[0] == "set -euo pipefail"
-        and commands[1].startswith("printf '%s\\n' 'EROHA NO-GO:")
-        and commands[1].endswith(" >&2")
+        and commands[1] == "printf '%s\\n' 'EROHA NO-GO: automatic Git sync is suspended in this draft until a separately controlled owner approves branch writes and release authority.' >&2"
         and commands[2] == "exit 41"
     )
 
@@ -145,6 +149,24 @@ class IntegratedHoldTests(unittest.TestCase):
         self.assertTrue(active_fail_closed(HF, "release-quarantine", require_always=False))
         self.assertIn("contents: read", HF)
         self.assertNotIn("contents: write", HF)
+
+    def test_hf_shell_substitution_in_error_message_is_rejected(self):
+        marker = 'echo "::error title=EROHA HF deployment NO-GO::'
+        self.assertIn(marker, HF)
+        tampered = HF.replace(marker, marker + '$(touch /tmp/eroha-injected) ', 1)
+        self.assertFalse(active_fail_closed(tampered, "release-quarantine", require_always=False))
+
+    def test_guardian_shell_substitution_in_error_message_is_rejected(self):
+        marker = 'echo "::error title=EROHA Guardian NO-GO::'
+        self.assertIn(marker, CORE)
+        tampered = CORE.replace(marker, marker + '$(touch /tmp/eroha-injected) ', 1)
+        self.assertFalse(active_fail_closed(tampered, "guardian-authorization"))
+
+    def test_sync_embedded_shell_commands_are_rejected(self):
+        marker = "automatic Git sync is suspended in this draft"
+        self.assertIn(marker, SYNC)
+        tampered = SYNC.replace(marker, marker + "'; git push origin main; printf '", 1)
+        self.assertFalse(active_sync_hold(tampered))
 
     def test_disabled_hf_exit_is_detected(self):
         prefix, marker, suffix = HF.rpartition("          exit 41")
