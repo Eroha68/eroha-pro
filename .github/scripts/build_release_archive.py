@@ -138,7 +138,11 @@ def load_approved_manifest(path: Path, commit: str,
 
 
 def build(repo: Path, commit: str, output: Path,
-          approved_paths: frozenset[str] | None = None) -> tuple[int, int]:
+          approved_paths: frozenset[str]) -> tuple[int, int]:
+    # An omitted or malformed approval must fail before touching Git or disk.
+    if (type(approved_paths) is not frozenset or not approved_paths or
+            any(type(name) is not str for name in approved_paths)):
+        raise ValueError("MANIFEST_APPROVAL_REQUIRED")
     repo = repo.resolve(strict=True)
     actual = git(repo, "rev-parse", "--verify", "HEAD").decode("ascii").strip()
     if commit != actual or not re.fullmatch(r"[0-9a-f]{40}", actual):
@@ -165,8 +169,7 @@ def build(repo: Path, commit: str, output: Path,
         selected.append((name, object_id))
     if not selected or len(selected) > MAX_FILES:
         raise ValueError("INVALID_ARCHIVE_MEMBER_COUNT")
-    if (approved_paths is not None and
-            {name for name, _ in selected} != approved_paths):
+    if {name for name, _ in selected} != approved_paths:
         raise ValueError("MANIFEST_MEMBER_SET_MISMATCH")
     # Check sizes of ALL committed blobs before reading even the first byte.
     # Git object identity is immutable; a size query cannot enlarge the
