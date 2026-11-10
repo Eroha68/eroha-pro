@@ -108,6 +108,12 @@ class ApprovedMemberManifestTest(unittest.TestCase):
                                         "MANIFEST_DUPLICATE_OR_UNSORTED_FILES"):
                 self.loaded(pin)
 
+    def test_manifest_casefolded_file_directory_collision_rejected(self):
+        pin = self.approve(["APP.PY/nested.txt", "app.py"])
+        with self.assertRaisesRegex(ValueError, "MANIFEST_COLLIDING_PATHS"):
+            self.loaded(pin)
+        self.assertFalse(self.output.exists())
+
     def test_case_insensitive_member_collision_rejected(self):
         pin = self.approve(["APP.PY", "app.py"])
         with self.assertRaisesRegex(ValueError, "MANIFEST_COLLIDING_PATHS"):
