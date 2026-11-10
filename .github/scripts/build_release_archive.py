@@ -84,6 +84,9 @@ def load_approved_manifest(path: Path, commit: str,
     """
     if not re.fullmatch(r"[0-9a-f]{64}", approved_sha256):
         raise ValueError("MANIFEST_DIGEST_INVALID")
+    # Do not normalize away a traversed symlink/.. component.
+    if ".." in path.parts:
+        raise ValueError("MANIFEST_UNAVAILABLE")
     # Refuse static symlink redirects in any ancestor of the manifest.
     # O_NOFOLLOW alone covers only the final path component.
     absolute_manifest = Path(os.path.abspath(path))
@@ -192,6 +195,9 @@ def build(repo: Path, commit: str, output: Path,
         if size > MAX_MEMBER_SIZE or planned_total > MAX_TOTAL_SIZE:
             raise ValueError("ARCHIVE_SIZE_LIMIT")
         preflight.append((name, object_id, size))
+    # Do not normalize away a traversed symlink/.. component.
+    if ".." in output.parts:
+        raise ValueError("UNSAFE_OUTPUT_PATH")
     # Reject any symlinked ancestor before and after creating directories.
     # This protects static paths, not concurrent adversarial path swaps.
     absolute_output = Path(os.path.abspath(output))
