@@ -5,8 +5,8 @@ Evidence checked: 2026-11-10. This file describes a migration, not user approval
 
 ## Verified boundary at handoff
 
-- The current `main` contains two executable publisher channels: `.github/workflows/eroha_core_ci.yml` has an active `release` job, `contents: write`, and `git push`; `.github/workflows/deploy.yml` uses `secrets.HF_TOKEN` and pushes to Hugging Face.
-- The candidate in draft PR #48 removes the direct HF deploy and GitHub Release job and keeps a fail-closed Guardian placeholder. **Neither candidate is merged nor independent.**
+- The current `main` contains **three identified write-capable paths in source**: `.github/workflows/eroha_core_ci.yml` has an active `release` job, `contents: write`, and `git push`; `.github/workflows/deploy.yml` uses `secrets.HF_TOKEN` and pushes to Hugging Face; `sync.sh` defaults to `main` and runs `git push -u origin "$BRANCH"`. Actual execution, external credentials and effective bypass rights of `sync.sh` have **not** been demonstrated.
+- The candidate in draft PR #48 removes the direct HF deploy and GitHub Release job, replaces `sync.sh` with an explicit non-writing exit 41, and keeps a fail-closed Guardian placeholder. **It is not merged, not an independent enforcement point, and merging the sync hold would deliberately interrupt existing Replit/Git autosync if used.**
 - `eroha-pro/main` reports `protected: true` but no named required status checks in the queried branch response. The queried repository rulesets endpoint returned an empty list; **other protections or effective bypass rights are not fully enumerated**.
 - `eroha-trusted-ci-gate/main` reports `protected: false`. Separate repository names, in-repo tests, an Ed25519 lab-generated key or a green CI run do **not** make a trusted root independent.
 - Desktop Commander reported `MacBook-Pro-Ermek.local: Offline`. No native R2/G9/G10 acceptance can be concluded from GitHub.
@@ -26,10 +26,10 @@ Evidence checked: 2026-11-10. This file describes a migration, not user approval
 
 ## Eight independently verifiable acceptance milestones
 
-1. **Read-only baseline (R4):** Inventory all effective release/tag/branch/environment rules, bypass actors, GitHub Actions permissions, secrets consumers, Hugging Face deployment routes, other CI actors and scheduled jobs. Capture APIs, access limitations, and current commit IDs. Unknown is not a PASS.
+1. **Read-only baseline (R4):** Inventory all effective release/tag/branch/environment rules, bypass actors, GitHub Actions permissions, secrets consumers, Hugging Face deployment routes, `sync.sh` and any Replit invocation/credential context, other CI actors and scheduled jobs. Capture APIs, access limitations, and current commit IDs. Unknown is not a PASS.
 2. **External owner appointment (R2/R4):** Record the explicitly approved independent Guardian owner and independent policy/Broker administrators. Verify with separate identities that Proposer cannot edit protected policy, public-key pin, private signer or publishing credentials. No production secrets should be opened for this canary.
 3. **Native Guardian identity (R2/G9):** On a connected Mac, verify a trusted signer identity, separate system principal, XPC peer requirements, protected key access and real per-operation user consent. A cancelled authentication stays DENY.
-4. **Broker authority isolation (R4):** Provision a separate publisher identity and Broker-controlled destination credential in an approved change window. Verify Proposer has neither the token nor a bypass route, including GitHub Releases, tags and Hugging Face. Do not delete or rotate the existing production secret before rollback ownership is approved.
+4. **Broker authority isolation (R4):** Provision a separate publisher identity and Broker-controlled destination credential in an approved change window. Verify Proposer has neither the token nor a bypass route, including GitHub Releases, tags, Hugging Face, local `git push` and Replit/autosync credentials. Do not delete or rotate existing credentials before rollback ownership is approved.
 5. **Signed single-use authorization (R4/G9):** Verify independently pinned signer, exact repository/commit/run/artifact digest/action/target/policy/TTL/nonce binding and durable replay rejection after process restart. Reject unknown clock, store failure, tampering and missing context.
 6. **Native worker/resource envelope (G7/G8/G10):** Verify network policy, hostile XPC peer rejection, crash/restart/concurrency, aggregate CPU/RAM/process caps across Host + XPC + children. Collect kernel/OS observed denials; simulation and process-local limits are insufficient.
 7. **Codex/Plus reality check (R3):** Execute an explicitly authorized real operation within actual subscription limits; retain observed quota and fail-closed behavior, without paid API substitution. Do not infer entitlements from subscription marketing.
@@ -56,7 +56,7 @@ Evidence checked: 2026-11-10. This file describes a migration, not user approval
 ## Confirmed CI evidence
 
 - PR #48: https://github.com/Eroha68/eroha-pro/pull/48
-- GitHub Actions laboratory + production source inventory: https://github.com/Eroha68/eroha-pro/actions/runs/42854803892
+- GitHub Actions three-channel source inventory and 40 laboratory test executions (20 each under normal Python and `-O`): https://github.com/Eroha68/eroha-pro/actions/runs/42865686253
 - Trusted-root laboratory PR #11: https://github.com/Eroha68/eroha-trusted-ci-gate/pull/11
 
 **No production changes, credential changes, branch protection changes, release publication, paid API use or macOS system modifications are authorized or performed by this document.**
