@@ -280,6 +280,7 @@ class ArchiveBoundaryTest(unittest.TestCase):
 
     def test_archive_digest_stable_across_independent_working_copies(self):
         approved = self.approved_fixture_paths()
+        expected_bytes = (self.repo / "app.py").read_bytes()
         first = self.repo / "artifacts" / "first.zip"
         build(self.repo, self.commit, first, approved)
         clone = Path(self.temp.name) / "independent-clone"
@@ -294,7 +295,7 @@ class ArchiveBoundaryTest(unittest.TestCase):
         self.assertEqual(hashlib.sha256(first.read_bytes()).hexdigest(),
                          hashlib.sha256(second.read_bytes()).hexdigest())
         with zipfile.ZipFile(second) as archive:
-            self.assertEqual(archive.read("app.py"), b"print('committed')\\n")
+            self.assertEqual(archive.read("app.py"), expected_bytes)
 
     def test_git_executable_mode_changes_archive_digest(self):
         approved = self.approved_fixture_paths()
