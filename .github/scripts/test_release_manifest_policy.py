@@ -297,6 +297,24 @@ class ApprovedMemberManifestTest(unittest.TestCase):
         self.assertEqual(self.manifest_path.read_bytes(), before)
         self.assertEqual(alias.read_bytes(), before)
 
+    def test_git_command_timeout_fails_closed_with_no_archive(self):
+        import build_release_archive as module
+        from unittest.mock import patch
+
+        pin = self.approve(["app.py"])
+        argv = [
+            "build_release_archive.py", "--repo", str(self.repo),
+            "--commit", self.commit, "--output", str(self.output),
+            "--manifest", str(self.manifest_path), "--manifest-sha256", pin,
+        ]
+        timeout = subprocess.TimeoutExpired(cmd=["git", "rev-parse"],
+                                            timeout=module.GIT_COMMAND_TIMEOUT_SECONDS)
+        with patch.object(sys, "argv", argv), \
+             patch.object(module, "git", side_effect=timeout):
+            result = module.main()
+        self.assertEqual(result, 41)
+        self.assertFalse(self.output.exists())
+
     def test_cli_exact_manifest_positive(self):
         pin = self.approve(["app.py"])
         process = subprocess.run(
