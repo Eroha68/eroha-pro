@@ -22,6 +22,7 @@ MAX_FILES = 10_000
 MAX_MEMBER_SIZE = 32 * 1024 * 1024
 MAX_TOTAL_SIZE = 256 * 1024 * 1024
 MAX_MANIFEST_SIZE = 128 * 1024
+GIT_COMMAND_TIMEOUT_SECONDS = 30
 FORBIDDEN_COMPONENTS = {".git", ".github", "artifacts", "__pycache__"}
 FORBIDDEN_EXTENSIONS = {".pem", ".p12", ".pfx", ".key", ".kdbx"}
 # Sensitive credential locations without necessarily dangerous file extensions.
@@ -47,7 +48,8 @@ def git(repo: Path, *args: str) -> bytes:
     env["GIT_CONFIG_NOSYSTEM"] = "1"
     env["GIT_CONFIG_GLOBAL"] = os.devnull
     return subprocess.check_output(
-        ["git", "-C", str(repo), *args], stderr=subprocess.PIPE, env=env
+        ["git", "-C", str(repo), *args], stderr=subprocess.PIPE, env=env,
+        timeout=GIT_COMMAND_TIMEOUT_SECONDS
     )
 
 
@@ -324,7 +326,8 @@ def main() -> int:
         count, total = build(args.repo, args.commit, args.output,
                              approved_paths=approved_paths)
     except (ValueError, OSError, subprocess.CalledProcessError,
-            UnicodeError, zipfile.BadZipFile, OverflowError) as error:
+            subprocess.TimeoutExpired, UnicodeError, zipfile.BadZipFile,
+            OverflowError) as error:
         print(f"RELEASE_ARCHIVE_REJECTED:{type(error).__name__}:{error}",
               file=sys.stderr)
         return 41
