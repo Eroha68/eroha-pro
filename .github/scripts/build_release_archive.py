@@ -182,12 +182,20 @@ def build(repo: Path, commit: str, output: Path,
     if (type(approved_paths) is not frozenset or
             any(type(name) is not str for name in approved_paths)):
         raise ValueError("MANIFEST_APPROVAL_REQUIRED")
+    # Release output must not target repository control files or non-ZIP paths.
+    # Reject before touching Git or creating any output directory.
+    if (output.suffix.lower() != ".zip" or ".." in output.parts or
+            any(part.casefold() in {".git", ".github", ".ssh", ".aws",
+                                    ".azure", ".kube", ".gnupg"}
+                for part in output.parts)):
+        raise ValueError("UNSAFE_OUTPUT_PATH")
     repo = repo.resolve(strict=True)
     actual = git(repo, "rev-parse", "--verify", "HEAD").decode("ascii").strip()
     if commit != actual or not re.fullmatch(r"[0-9a-f]{40}", actual):
         raise ValueError("COMMIT_PIN_MISMATCH")
     tree = git(repo, "ls-tree", "-rz", "--full-tree", commit)
     selected: list[tuple[str, str, str]] = []
+    tracked_names: set[str] = set()
     seen: set[str] = set()
     for entry in tree.split(b"\0"):
         if not entry:
@@ -199,6 +207,7 @@ def build(repo: Path, commit: str, output: Path,
         if not re.fullmatch(r"[0-9a-f]{40}", object_id):
             raise ValueError("INVALID_GIT_OBJECT_ID")
         name = safe_name(raw_name.decode("utf-8", "strict"))
+        tracked_names.add(name.casefold())
         if is_forbidden(name):
             continue
         if kind != "blob" or mode not in ("100644", "100755"):
@@ -244,6 +253,12 @@ def build(repo: Path, commit: str, output: Path,
                 for fn in (os.open, os.mkdir, os.unlink, os.stat))):
         raise ValueError("OUTPUT_SAFE_OPEN_UNSUPPORTED")
     absolute_output = Path(os.path.abspath(output))
+    try:
+        relative_output = absolute_output.relative_to(repo).as_posix().casefold()
+    except ValueError:
+        relative_output = None
+    if relative_output is not None and relative_output in tracked_names:
+        raise ValueError("OUTPUT_OVERWRITES_TRACKED_FILE")
     directory_flags = (os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW |
                        getattr(os, "O_CLOEXEC", 0))
     parent_fd = None
@@ -262,8 +277,17 @@ def build(repo: Path, commit: str, output: Path,
         try:
             existing = os.stat(absolute_output.name, dir_fd=parent_fd,
                                follow_symlinks=False)
-            if stat.S_ISLNK(existing.st_mode):
+            if not stat.S_ISREG(existing.st_mode):
                 raise ValueError("UNSAFE_OUTPUT_PATH")
+            previous_fd = os.open(
+                absolute_output.name, os.O_RDONLY | os.O_NOFOLLOW |
+                getattr(os, "O_CLOEXEC", 0), dir_fd=parent_fd,
+            )
+            with os.fdopen(previous_fd, "rb") as previous:
+                if not stat.S_ISREG(os.fstat(previous.fileno()).st_mode):
+                    raise ValueError("UNSAFE_OUTPUT_PATH")
+                if not zipfile.is_zipfile(previous):
+                    raise ValueError("OUTPUT_OVERWRITES_NON_ARCHIVE")
         except FileNotFoundError:
             pass
         temp_name = ".eroha-archive-" + secrets.token_hex(16) + ".zip"
