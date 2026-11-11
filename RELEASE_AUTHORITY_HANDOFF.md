@@ -152,6 +152,17 @@ Read-only comparison of PR #48 and **current production `main`** (source, not li
 6. Replace hardcoded code-owned NO-GO with a separately owned, mandatory, independently evaluated decision. A proposer-owned workflow cannot approve its own promotion.
 7. Run the enumerated industrial scenarios and independently sign acceptance. Absent any single proof, keep NO-GO and do not publish.
 
+## 2026-11-11 — artifact object-integrity verification, latest candidate evidence
+
+Candidate commit `8d94f67aa0adc00af28da941e94abf16e6cec1f3` adds a Git blob-object SHA-1 identity check to the deterministic ZIP builder. It rejects a same-length substituted blob with `GIT_BLOB_HASH_MISMATCH` **before** the atomic archive replacement. This checks internal Git object consistency; it does **not** establish signature, collision resistance beyond Git's SHA-1 object format, independent authorization, source attestation or publisher rights.
+
+The GitHub Actions candidate job passed **33 + 39 + 21 = 93 distinct unittest methods** with normal Python and Python `-O` (**186 successful method executions**), including the same-length blob mutation. The separate industrial-no-go job intentionally failed. This is **laboratory PASS / industrial NO-GO**, not an overall workflow PASS:
+https://github.com/Eroha68/eroha-pro/actions/runs/42943844625
+
+The `Eroha68` GitHub account was rechecked as `admin` in both `eroha-pro` and `eroha-trusted-ci-gate`. Independent Guardian/Broker owner custody, effective denial of Proposer writes, signed final grant, disposable publish and rollback are still **unverified**. This information does not close any G1–G10 industrial gate, R2–R4 investigation or independent acceptance item I01–I16.
+
+**Next mandatory evidence:** use independently owned policy and separate identities to demonstrate denied Proposer edits to the trusted Guardian and publisher credentials, before any release activation. Do not attempt such authorization tests by changing the current owner's privileges without a separately approved migration and rollback owner.
+
 ## Confirmed CI evidence
 
 - PR #48: https://github.com/Eroha68/eroha-pro/pull/48
