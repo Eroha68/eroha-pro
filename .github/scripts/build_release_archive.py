@@ -196,6 +196,8 @@ def build(repo: Path, commit: str, output: Path,
         if not separator:
             raise ValueError("INVALID_GIT_TREE_ENTRY")
         mode, kind, object_id = metadata.decode("ascii").split()
+        if not re.fullmatch(r"[0-9a-f]{40}", object_id):
+            raise ValueError("INVALID_GIT_OBJECT_ID")
         name = safe_name(raw_name.decode("utf-8", "strict"))
         if is_forbidden(name):
             continue
@@ -278,6 +280,11 @@ def build(repo: Path, commit: str, output: Path,
                     blob = git(repo, "cat-file", "blob", object_id)
                     if len(blob) != expected_size:
                         raise ValueError("GIT_BLOB_SIZE_MISMATCH")
+                    # Verify raw bytes against Git\u0027s SHA-1 blob-object framing.
+                    # Checking only blob length cannot detect same-size corruption.
+                    framed = b"blob " + str(len(blob)).encode("ascii") + b"\x00" + blob
+                    if hashlib.sha1(framed).hexdigest() != object_id:
+                        raise ValueError("GIT_BLOB_HASH_MISMATCH")
                     total += len(blob)
                     if total > MAX_TOTAL_SIZE:
                         raise ValueError("ARCHIVE_SIZE_LIMIT")
