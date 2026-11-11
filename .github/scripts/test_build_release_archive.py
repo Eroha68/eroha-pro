@@ -184,7 +184,7 @@ class ArchiveBoundaryTest(unittest.TestCase):
         fakebin = Path(self.temp.name) / "git-shim"
         fakebin.mkdir()
         executable = fakebin / "git"
-        executable.write_text("#!/bin/sh\\nexec sleep 3\\n", encoding="utf-8")
+        executable.write_text(chr(10).join(["#!/bin/sh", "exec sleep 3", ""]), encoding="utf-8")
         executable.chmod(0o755)
         fake_path = str(fakebin) + os.pathsep + os.environ.get("PATH", "")
         started = time.monotonic()
