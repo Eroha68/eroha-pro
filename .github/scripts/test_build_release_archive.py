@@ -359,6 +359,39 @@ class ArchiveBoundaryTest(unittest.TestCase):
             self.fixture_build(self.repo, self.commit, self.output)
         self.assertEqual(self.output.read_bytes(), old)
 
+    def test_existing_nonarchive_output_is_never_overwritten(self):
+        self.output.parent.mkdir()
+        original = b"SYNTHETIC_USER_DATA_NOT_AN_ARCHIVE"
+        self.output.write_bytes(original)
+        with self.assertRaisesRegex(ValueError, "OUTPUT_OVERWRITES_NON_ARCHIVE"):
+            self.fixture_build(self.repo, self.commit, self.output)
+        self.assertEqual(self.output.read_bytes(), original)
+
+    def test_existing_valid_archive_can_be_safely_replaced(self):
+        self.fixture_build(self.repo, self.commit, self.output)
+        before = self.output.read_bytes()
+        self.fixture_build(self.repo, self.commit, self.output)
+        self.assertEqual(self.output.read_bytes(), before)
+
+    def test_tracked_zip_is_not_a_writable_release_destination(self):
+        self.add_commit("tracked.zip", b"SYNTHETIC_TRACKED_DATA")
+        destination = self.repo / "tracked.zip"
+        original = destination.read_bytes()
+        with self.assertRaisesRegex(ValueError, "OUTPUT_OVERWRITES_TRACKED_FILE"):
+            self.fixture_build(self.repo, self.commit, destination)
+        self.assertEqual(destination.read_bytes(), original)
+
+    def test_output_under_git_control_directory_or_nonzip_is_rejected(self):
+        for destination in (
+            self.repo / ".git" / "config.zip",
+            self.repo / ".github" / "workflow.zip",
+            self.repo / "app.py",
+        ):
+            with self.subTest(destination=str(destination)):
+                with self.assertRaisesRegex(ValueError, "UNSAFE_OUTPUT_PATH"):
+                    self.fixture_build(self.repo, self.commit, destination)
+                self.assertFalse(destination.exists())
+
     def test_archive_is_deterministic(self):
         first = self.repo / "artifacts" / "release-a.zip"
         second = self.repo / "artifacts" / "release-b.zip"
