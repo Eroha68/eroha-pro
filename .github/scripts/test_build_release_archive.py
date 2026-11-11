@@ -182,15 +182,20 @@ class ArchiveBoundaryTest(unittest.TestCase):
         approved = self.approved_fixture_paths()
         underlying = module.subprocess.check_output
         git_environments = []
+        git_timeouts = []
 
         def inspect_git(*args, **kwargs):
             if args and args[0] and args[0][0] == "git":
                 git_environments.append(kwargs["env"])
+                git_timeouts.append(kwargs.get("timeout"))
             return underlying(*args, **kwargs)
 
         with patch.object(module.subprocess, "check_output", side_effect=inspect_git):
             build(self.repo, self.commit, self.output, approved)
         self.assertTrue(git_environments)
+        self.assertTrue(all(value == module.GIT_COMMAND_TIMEOUT_SECONDS
+                            for value in git_timeouts))
+        self.assertGreater(module.GIT_COMMAND_TIMEOUT_SECONDS, 0)
         for env in git_environments:
             self.assertEqual(env.get("GIT_NO_LAZY_FETCH"), "1")
             self.assertEqual(env.get("GIT_NO_REPLACE_OBJECTS"), "1")
