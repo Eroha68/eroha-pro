@@ -388,9 +388,13 @@ class ArchiveBoundaryTest(unittest.TestCase):
             self.repo / "app.py",
         ):
             with self.subTest(destination=str(destination)):
+                original = destination.read_bytes() if destination.exists() else None
                 with self.assertRaisesRegex(ValueError, "UNSAFE_OUTPUT_PATH"):
                     self.fixture_build(self.repo, self.commit, destination)
-                self.assertFalse(destination.exists())
+                if original is None:
+                    self.assertFalse(destination.exists())
+                else:
+                    self.assertEqual(destination.read_bytes(), original)
 
     def test_archive_is_deterministic(self):
         first = self.repo / "artifacts" / "release-a.zip"
