@@ -461,6 +461,25 @@ class ArchiveBoundaryTest(unittest.TestCase):
         self.assertFalse(self.output.exists())
 
 
+    def test_same_length_git_blob_tampering_rejected_before_zip_replace(self):
+        import build_release_archive as module
+        from unittest.mock import patch
+
+        expected_blob = (self.repo / "app.py").read_bytes()
+        alternate = b"X" + expected_blob[1:]
+        self.assertEqual(len(alternate), len(expected_blob))
+        previous = module.git
+
+        def tamper_one_blob(repo, *args):
+            if args[:2] == ("cat-file", "blob"):
+                return alternate
+            return previous(repo, *args)
+
+        with patch.object(module, "git", side_effect=tamper_one_blob):
+            with self.assertRaisesRegex(ValueError, "GIT_BLOB_HASH_MISMATCH"):
+                self.fixture_build(self.repo, self.commit, self.output)
+        self.assertFalse(self.output.exists())
+
     def test_oversized_git_blob_is_rejected_before_reading_it(self):
         import build_release_archive as module
         from unittest.mock import patch
