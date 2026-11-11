@@ -175,6 +175,26 @@ class ArchiveBoundaryTest(unittest.TestCase):
             build(partial, self.commit, rejected_output, approved)
         self.assertFalse(rejected_output.exists())
 
+    @unittest.skipUnless(os.name == "posix", "POSIX executable shim required")
+    def test_hanging_git_subprocess_is_terminated_at_command_timeout(self):
+        import build_release_archive as module
+        from unittest.mock import patch
+        import time
+
+        fakebin = Path(self.temp.name) / "git-shim"
+        fakebin.mkdir()
+        executable = fakebin / "git"
+        executable.write_text("#!/bin/sh\\nexec sleep 3\\n", encoding="utf-8")
+        executable.chmod(0o755)
+        fake_path = str(fakebin) + os.pathsep + os.environ.get("PATH", "")
+        started = time.monotonic()
+        with patch.dict(os.environ, {"PATH": fake_path}), \
+             patch.object(module, "GIT_COMMAND_TIMEOUT_SECONDS", 0.2):
+            with self.assertRaises(subprocess.TimeoutExpired):
+                module.git(self.repo, "rev-parse", "--verify", "HEAD")
+        elapsed = time.monotonic() - started
+        self.assertLess(elapsed, 2.0, "GIT_PROCESS_TIMEOUT_NOT_ENFORCED")
+
     def test_git_reads_disable_promisor_lazy_fetch_and_optional_locks(self):
         import build_release_archive as module
         from unittest.mock import patch
