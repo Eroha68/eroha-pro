@@ -17,10 +17,11 @@ permissions:
   contents: read
 
 jobs:
-  legacy-deployment-disabled:
-    name: Direct HF deployment remains NO-GO
+  legacy-deployment-denied:
+    name: Direct HF deployment explicitly denied
     runs-on: ubuntu-latest
-    if: ${{ false }}
+    # Fail visibly on a legacy deployment trigger; a skipped job can appear green.
+    # This job has no checkout, deploy token, network calls or publishing steps.
     steps:
       - name: Refuse direct deployment without independent Broker authorization
         run: |
