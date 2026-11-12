@@ -63,7 +63,10 @@ restore_own_stash() {
     echo "EROHA_R4_CONCURRENT_STASH_CHANGE: edits restored, backup retained; no push" >&2
     return 78
   fi
-  git stash drop 'stash@{0}'
+  # Never delete a stash by mutable stack index. A second Git process can
+  # push a different entry between the top check and "stash drop".
+  # Retain our immutable backup for explicit owner-reviewed cleanup.
+  echo "EROHA_R4_STASH_BACKUP_RETAINED: $STASH_OID" >&2
 }
 
 # Rebase may conflict after temporarily saving local edits. On failure,
@@ -84,7 +87,7 @@ if ! git pull --rebase origin "$BRANCH"; then
   exit 78
 fi
 
-# 4) Apply first, drop only after successful restoration.
+# 4) Apply the exact stash commit and preserve its backup; no indexed deletion.
 restore_own_stash || exit 78
 
 # 5) Проверим, есть ли реальные изменения
