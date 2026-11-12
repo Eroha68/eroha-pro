@@ -245,12 +245,12 @@ def build(repo: Path, commit: str, output: Path,
     # Do not normalize away a traversed symlink/.. component.
     if ".." in output.parts:
         raise ValueError("UNSAFE_OUTPUT_PATH")
-    # Anchor output directory creation and final replacement to open fds.
-    # A string path can be redirected to another tree after is_symlink().
+    # Anchor staging to directory fds, and publish without replacing an existing
+    # name. An attacker must not win a final-name race after the preflight check.
     if (os.name != "posix" or not hasattr(os, "O_NOFOLLOW") or
             not hasattr(os, "O_DIRECTORY") or
             any(fn not in os.supports_dir_fd
-                for fn in (os.open, os.mkdir, os.unlink, os.stat))):
+                for fn in (os.open, os.mkdir, os.unlink, os.stat, os.link))):
         raise ValueError("OUTPUT_SAFE_OPEN_UNSUPPORTED")
     absolute_output = Path(os.path.abspath(output))
     try:
@@ -288,6 +288,7 @@ def build(repo: Path, commit: str, output: Path,
                     raise ValueError("UNSAFE_OUTPUT_PATH")
                 if not zipfile.is_zipfile(previous):
                     raise ValueError("OUTPUT_OVERWRITES_NON_ARCHIVE")
+                raise ValueError("OUTPUT_ALREADY_EXISTS")
         except FileNotFoundError:
             pass
         temp_name = ".eroha-archive-" + secrets.token_hex(16) + ".zip"
@@ -321,8 +322,16 @@ def build(repo: Path, commit: str, output: Path,
             temp_file.flush()
             if not zipfile.is_zipfile(temp_file):
                 raise ValueError("INVALID_OUTPUT_ZIP")
-        os.replace(temp_name, absolute_output.name,
-                   src_dir_fd=parent_fd, dst_dir_fd=parent_fd)
+        # os.replace() is unsafe here: another actor may create the target
+        # after the preflight stat. Hard-link publication is atomic and fails
+        # if the target name exists, so no existing data can be overwritten.
+        try:
+            os.link(temp_name, absolute_output.name,
+                    src_dir_fd=parent_fd, dst_dir_fd=parent_fd,
+                    follow_symlinks=False)
+        except FileExistsError as exc:
+            raise ValueError("OUTPUT_ALREADY_EXISTS") from exc
+        os.unlink(temp_name, dir_fd=parent_fd)
         temp_name = None
         return len(selected), total
     except OSError as exc:
