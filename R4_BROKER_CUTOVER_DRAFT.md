@@ -18,3 +18,11 @@ Research branch `research/r4-broker-only-cutover-20261112`. **Do not merge witho
 6. Only after those prerequisites, operator approves merge and production activation.
 
 **Current acceptance:** LAB CLOSED WITH RESTRICTIONS; R4 OPEN / P1 OPEN / independent custody NOT PROVEN; industrial NO-GO.
+
+## Isolated safety correction and evidence (2026-11-12)
+- Source commit `ba4e604ca0a5ee4c44a9b17c05b51f7990135b60` updates `sync.sh`: branch preflight, `fetch` before `stash`, no `checkout -B`, `stash apply` before `stash drop`.
+- MacBook-Pro-Ermek.local (Desktop Commander Remote 0.3.2) ran `bash -n`: exit 0.
+- A disposable local Git repository under a freshly created temporary directory tested a deliberately missing local `origin`: script exited with an error, the tracked unsaved modification remained, and no stash entry was made. Evidence marker: `R4_FETCH_FAILURE_LOCAL_CHANGE_PRESERVED=PASS`.
+- The same disposable repository tested passing `main` to the script; the preflight rejected it with exit status 78. Evidence marker: `R4_PROTECTED_REF_REJECTED_BEFORE_MUTATION=PASS`.
+- Temporary test directory removed by shell EXIT cleanup. No network publication, real tokens, working `main`, or user repository content was used.
+- **Not verified:** a successful end-to-end push, failure during rebase with a stash present, partial conflict during `stash apply`, every alias or permission-based bypass, industrial role independence, or destructive rollback P1. Keep draft/NO-GO.
