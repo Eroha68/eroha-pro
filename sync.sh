@@ -3,6 +3,15 @@ set -euo pipefail
 
 BRANCH="${1:-main}"
 
+# Research R4: protected publication targets require an independently approved Broker.
+# This script may still push ordinary source branches with existing Git permissions.
+case "$BRANCH" in
+  main|master|release/*|refs/tags/*|v[0-9]*)
+    echo "EROHA_R4_REFUSE_PROTECTED_PUSH: $BRANCH (Broker authorization required)" >&2
+    exit 78
+    ;;
+esac
+
 # 1) Убедимся, что git знает имя и email (иначе GitHub отвергнет коммит)
 if ! git config user.email >/dev/null; then
   git config user.email "autosync@replit.local"
