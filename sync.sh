@@ -3,14 +3,21 @@ set -euo pipefail
 
 BRANCH="${1:-main}"
 
-# Research R4: protected publication targets require an independently approved Broker.
-# This script may still push ordinary source branches with existing Git permissions.
+# Research R4: an ordinary source branch only, never a full ref or release target.
+# Reject before stash, checkout, fetch, commit, or push can mutate local state.
 case "$BRANCH" in
-  main|master|release/*|refs/tags/*|v[0-9]*)
+  main|master|release|release/*|refs/*|tags/*|v[0-9]*)
     echo "EROHA_R4_REFUSE_PROTECTED_PUSH: $BRANCH (Broker authorization required)" >&2
     exit 78
     ;;
 esac
+
+# Git's native validation rejects option-like names, malformed branch refs,
+# control characters, revspecs and invalid separators before any side effect.
+if ! git check-ref-format --branch "$BRANCH" >/dev/null 2>&1; then
+  echo "EROHA_R4_REFUSE_INVALID_BRANCH" >&2
+  exit 78
+fi
 
 # 1) Убедимся, что git знает имя и email (иначе GitHub отвергнет коммит)
 if ! git config user.email >/dev/null; then
