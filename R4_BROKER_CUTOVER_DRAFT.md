@@ -3,8 +3,8 @@
 Research branch `research/r4-broker-only-cutover-20261112`. **Do not merge without approved maintenance window, designated independent Guardian/Broker owners and migration of production deployment credentials.**
 
 ## Exact proposed effects on merge
-- `.github/workflows/eroha_core_ci.yml`: keep validate/build jobs; set `contents: read`; hard-disable the existing tag+GitHub-release job. NO new release route.
-- `.github/workflows/deploy.yml`: hard-disable the existing Hugging Face deployment job (including its status notification). NO new deploy route.
+- `.github/workflows/eroha_core_ci.yml`: keep validate/build jobs; set `contents: read`; **remove** the legacy tag+GitHub-release job and its write-token code. NO new release route.
+- `.github/workflows/deploy.yml`: replace the legacy Hugging Face deployment job with a disabled fail-closed stub, removing all direct HF token and push commands (and the prior deployment notification). NO new deploy route.
 - `sync.sh`: refuse direct pushes to main, master, release/* and tag-like names; ordinary branch pushes still require existing GitHub rights. Existing default invocation `./sync.sh` will now refuse because the default branch is main.
 
 **Expected business impact if merged:** automated GitHub releases and Hugging Face deployments stop; default sync fails deliberately. This PR must remain draft until an independently owned Broker is operational and the operator has accepted that downtime. It does not revoke any token, remove repository admin, prevent all alternate GitHub API / release routes or prove industrial isolation.
