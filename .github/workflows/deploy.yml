@@ -10,8 +10,14 @@ on:
       - "requirements.txt"
       - ".github/workflows/deploy.yml"
 
+permissions:
+  contents: read
+
 jobs:
   deploy:
+    # Research R4: disables direct HF publication from Proposer CI.
+    # No Broker deploy is enabled here; this intentionally suspends deployments if merged.
+    if: ${{ false }}
     name: 🧠 Smart Redeploy with Tests, Health Check & Alerts
     runs-on: ubuntu-latest
 
