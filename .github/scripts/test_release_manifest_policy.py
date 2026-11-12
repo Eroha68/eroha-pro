@@ -315,6 +315,51 @@ class ApprovedMemberManifestTest(unittest.TestCase):
         self.assertEqual(result, 41)
         self.assertFalse(self.output.exists())
 
+    def test_corrupted_deflate_stream_returns_controlled_error_41(self):
+        import build_release_archive as module
+        from unittest.mock import patch
+        from contextlib import redirect_stderr
+        import io
+
+        pin = self.approve(["app.py"])
+        argv = [
+            "build_release_archive.py", "--repo", str(self.repo),
+            "--commit", self.commit, "--output", str(self.output),
+            "--manifest", str(self.manifest_path), "--manifest-sha256", pin,
+        ]
+        original_is_zip = zipfile.is_zipfile
+        injected = [False]
+
+        def corrupt_deflate_stream_before_crc_validation(file_obj):
+            file_obj.seek(0)
+            data = bytearray(file_obj.read())
+            local_header = data.index(b"PK\x03\x04")
+            name_len = int.from_bytes(data[local_header + 26:local_header + 28], "little")
+            extra_len = int.from_bytes(data[local_header + 28:local_header + 30], "little")
+            payload_start = local_header + 30 + name_len + extra_len
+            # Deflate block-type 3 is reserved and forces a zlib.error.
+            data[payload_start] = (data[payload_start] & 0xF9) | 0x06
+            file_obj.seek(0)
+            file_obj.write(data)
+            file_obj.truncate()
+            file_obj.flush()
+            injected[0] = True
+            return original_is_zip(file_obj)
+
+        captured = io.StringIO()
+        with patch.object(sys, "argv", argv), \
+             patch.object(module.zipfile, "is_zipfile",
+                          side_effect=corrupt_deflate_stream_before_crc_validation), \
+             redirect_stderr(captured):
+            code = module.main()
+        self.assertTrue(injected[0])
+        self.assertEqual(code, 41)
+        self.assertIn("RELEASE_ARCHIVE_REJECTED:error:", captured.getvalue())
+        self.assertFalse(self.output.exists())
+        self.assertEqual(
+            list(self.output.parent.glob(".eroha-archive-*.zip")), []
+        )
+
     def test_cli_exact_manifest_positive(self):
         pin = self.approve(["app.py"])
         process = subprocess.run(
