@@ -17,6 +17,7 @@ import subprocess
 import sys
 import unicodedata
 import zipfile
+import zlib
 
 MAX_FILES = 10_000
 MAX_MEMBER_SIZE = 32 * 1024 * 1024
@@ -375,7 +376,7 @@ def main() -> int:
                              approved_paths=approved_paths)
     except (ValueError, OSError, subprocess.CalledProcessError,
             subprocess.TimeoutExpired, UnicodeError, zipfile.BadZipFile,
-            OverflowError) as error:
+            zlib.error, OverflowError) as error:
         print(f"RELEASE_ARCHIVE_REJECTED:{type(error).__name__}:{error}",
               file=sys.stderr)
         return 41
