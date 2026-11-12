@@ -367,11 +367,37 @@ class ArchiveBoundaryTest(unittest.TestCase):
             self.fixture_build(self.repo, self.commit, self.output)
         self.assertEqual(self.output.read_bytes(), original)
 
-    def test_existing_valid_archive_can_be_safely_replaced(self):
+    def test_existing_valid_archive_cannot_be_overwritten(self):
         self.fixture_build(self.repo, self.commit, self.output)
         before = self.output.read_bytes()
-        self.fixture_build(self.repo, self.commit, self.output)
+        with self.assertRaisesRegex(ValueError, "OUTPUT_ALREADY_EXISTS"):
+            self.fixture_build(self.repo, self.commit, self.output)
         self.assertEqual(self.output.read_bytes(), before)
+
+    def test_final_output_name_race_never_overwrites_concurrent_file(self):
+        import build_release_archive as module
+        from unittest.mock import patch
+
+        sentinel = b"CONCURRENT_NON_ARCHIVE_USER_DATA"
+        original_is_zip = zipfile.is_zipfile
+        injected = [False]
+
+        def create_competitor_just_before_publish(source):
+            result = original_is_zip(source)
+            if not injected[0]:
+                # At this point the staging ZIP is complete and the old
+                # implementation would call os.replace() on this file.
+                self.output.write_bytes(sentinel)
+                injected[0] = True
+            return result
+
+        with patch.object(module.zipfile, "is_zipfile",
+                          side_effect=create_competitor_just_before_publish):
+            with self.assertRaisesRegex(ValueError, "OUTPUT_ALREADY_EXISTS"):
+                self.fixture_build(self.repo, self.commit, self.output)
+        self.assertTrue(injected[0])
+        self.assertEqual(self.output.read_bytes(), sentinel)
+        self.assertEqual(list(self.output.parent.glob(".eroha-archive-*.zip")), [])
 
     def test_tracked_zip_is_not_a_writable_release_destination(self):
         self.add_commit("tracked.zip", b"SYNTHETIC_TRACKED_DATA")
