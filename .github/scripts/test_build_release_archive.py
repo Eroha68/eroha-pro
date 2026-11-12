@@ -328,17 +328,17 @@ class ArchiveBoundaryTest(unittest.TestCase):
         external = Path(self.temp.name) / "outside"
         external.mkdir()
         relocated = self.repo / "relocated-artifacts"
-        original_replace = os.replace
+        original_link = os.link
         swapped = [False]
 
-        def swap_at_replace(src, dst, *args, **kwargs):
+        def swap_at_publish(src, dst, *args, **kwargs):
             if not swapped[0]:
                 self.output.parent.rename(relocated)
                 self.output.parent.symlink_to(external, target_is_directory=True)
                 swapped[0] = True
-            return original_replace(src, dst, *args, **kwargs)
+            return original_link(src, dst, *args, **kwargs)
 
-        with patch.object(module.os, "replace", side_effect=swap_at_replace):
+        with patch.object(module.os, "link", side_effect=swap_at_publish):
             self.fixture_build(self.repo, self.commit, self.output)
         self.assertTrue(swapped[0])
         self.assertFalse((external / self.output.name).exists())
