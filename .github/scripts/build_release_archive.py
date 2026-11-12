@@ -322,6 +322,14 @@ def build(repo: Path, commit: str, output: Path,
             temp_file.flush()
             if not zipfile.is_zipfile(temp_file):
                 raise ValueError("INVALID_OUTPUT_ZIP")
+            # EOCD/central-directory recognition is insufficient: a ZIP can
+            # have intact structure but corrupted member CRCs or payloads.
+            # Verify every member before the final name becomes visible.
+            temp_file.seek(0)
+            with zipfile.ZipFile(temp_file, "r") as verification:
+                corrupted = verification.testzip()
+                if corrupted is not None:
+                    raise ValueError("INVALID_OUTPUT_ZIP_CRC")
         # os.replace() is unsafe here: another actor may create the target
         # after the preflight stat. Hard-link publication is atomic and fails
         # if the target name exists, so no existing data can be overwritten.
