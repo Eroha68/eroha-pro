@@ -27,21 +27,36 @@ if ! git config user.name >/dev/null; then
   git config user.name "Replit Auto Sync"
 fi
 
-# 2) Сохраним незакоммиченные правки во временный stash (если есть)
+# 2) Безопасный preflight: работать только с текущей веткой.
+# Не менять указатель другой ветки через checkout -B.
+CURRENT_BRANCH="$(git symbolic-ref --quiet --short HEAD)" || {
+  echo "EROHA_R4_REFUSE_DETACHED_HEAD" >&2
+  exit 78
+}
+if [ "$CURRENT_BRANCH" != "$BRANCH" ]; then
+  echo "EROHA_R4_REFUSE_BRANCH_SWITCH: checked out $CURRENT_BRANCH" >&2
+  exit 78
+fi
+
+# Сначала выполнить fetch: при ошибке локальные изменения ещё не спрятаны.
+git fetch origin "$BRANCH"
+
+# 3) Временное сохранение изменений. Ошибки stash нельзя игнорировать.
 STASHED=0
 if ! git diff --quiet || ! git diff --cached --quiet || [ -n "$(git ls-files --others --exclude-standard)" ]; then
-  git stash push -u -m "autosync-stash" >/dev/null 2>&1 || true
+  git stash push -u -m "autosync-stash"
   STASHED=1
 fi
 
-# 3) Подтянем изменения с origin и аккуратно примем их через rebase
-git fetch origin "$BRANCH"
-git checkout -B "$BRANCH"
+# Если rebase завершится с ошибкой, stash останется в списке для восстановления.
+# Не выполнять checkout -B: он может сбросить указатель существующей ветки.
 git pull --rebase origin "$BRANCH"
 
-# 4) Вернём stash, если он был
+# 4) Сначала применить stash, и только после успешного применения удалить его.
+# При конфликте восстановление прерывается, а резервная запись сохраняется.
 if [ "$STASHED" -eq 1 ]; then
-  git stash pop
+  git stash apply 'stash@{0}'
+  git stash drop 'stash@{0}'
 fi
 
 # 5) Проверим, есть ли реальные изменения
