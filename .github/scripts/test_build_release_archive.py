@@ -338,7 +338,9 @@ class ArchiveBoundaryTest(unittest.TestCase):
                 swapped[0] = True
             return original_link(src, dst, *args, **kwargs)
 
-        with patch.object(module.os, "link", side_effect=swap_at_publish):
+        with patch.object(module.os, "link", new=swap_at_publish), \
+             patch.object(module.os, "supports_dir_fd",
+                          os.supports_dir_fd | {swap_at_publish}):
             self.fixture_build(self.repo, self.commit, self.output)
         self.assertTrue(swapped[0])
         self.assertFalse((external / self.output.name).exists())
