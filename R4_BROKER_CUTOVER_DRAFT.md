@@ -26,3 +26,10 @@ Research branch `research/r4-broker-only-cutover-20261112`. **Do not merge witho
 - The same disposable repository tested passing `main` to the script; the preflight rejected it with exit status 78. Evidence marker: `R4_PROTECTED_REF_REJECTED_BEFORE_MUTATION=PASS`.
 - Temporary test directory removed by shell EXIT cleanup. No network publication, real tokens, working `main`, or user repository content was used.
 - **Not verified:** a successful end-to-end push, failure during rebase with a stash present, partial conflict during `stash apply`, every alias or permission-based bypass, industrial role independence, or destructive rollback P1. Keep draft/NO-GO.
+
+## Targeted rebase-conflict correction — 2026-11-12
+- Commit `dca82ca2c9e47a3b572fd89c72744fadb1e49f6d` changes only the research-branch `sync.sh`. An actual `git pull --rebase` conflict formerly left a rebase in progress and stashed user edits unavailable in the working tree.
+- The patched script detects a failed pull, aborts the active rebase, attempts `stash apply` before `stash drop`, and returns explicit status 78. If abort/apply fails it leaves the stash intact and exits; no automatic publication is attempted.
+- One targeted disposable Git test used a local bare remote, two divergent commits touching the same tracked file, and an unsaved local file. No actual network service, publication identity, or private repo data was accessed.
+- Exact test markers from MacBook (Desktop Commander Remote): `R4_REBASE_FAILURE_EXPLICIT_EXIT=PASS`; `R4_REBASE_FAILURE_LOCAL_EDIT_RESTORED=PASS`; `R4_REBASE_FAILURE_STASH_RESTORED_AND_CLEARED=PASS`; `R4_REBASE_FAILURE_REBASE_ABORTED=PASS`; `R4_REBASE_FAILURE_LOCAL_COMMIT_PRESERVED=PASS`. `bash -n` also succeeded.
+- **Limit:** this validates only the simulated conflict on a local disposable Git repository. Other fetch/push errors, concurrent changes to the stash list, production publication, independent privilege custody, and P1 are not certified.
