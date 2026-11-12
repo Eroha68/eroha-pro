@@ -43,10 +43,28 @@ git fetch origin "$BRANCH"
 
 # 3) Временное сохранение изменений. Ошибки stash нельзя игнорировать.
 STASHED=0
+STASH_OID=""
 if ! git diff --quiet || ! git diff --cached --quiet || [ -n "$(git ls-files --others --exclude-standard)" ]; then
   git stash push -u -m "autosync-stash"
   STASHED=1
+  # Resolve our immutable stash commit immediately; never restore by moving index.
+  STASH_OID="$(git rev-parse --verify 'refs/stash^{commit}')" || exit 78
 fi
+
+restore_own_stash() {
+  [ "$STASHED" -eq 1 ] || return 0
+  if ! git stash apply "$STASH_OID"; then
+    echo "EROHA_R4_STASH_RESTORE_FAILED: original stash retained" >&2
+    return 78
+  fi
+  # A competing process may have pushed a new stash during fetch/rebase.
+  # Never drop or publish when the stash stack was changed by another actor.
+  if [ "$(git rev-parse -q --verify refs/stash)" != "$STASH_OID" ]; then
+    echo "EROHA_R4_CONCURRENT_STASH_CHANGE: edits restored, backup retained; no push" >&2
+    return 78
+  fi
+  git stash drop 'stash@{0}'
+}
 
 # Rebase may conflict after temporarily saving local edits. On failure,
 # abort the in-progress rebase first, and only then restore the local stash.
@@ -61,22 +79,13 @@ if ! git pull --rebase origin "$BRANCH"; then
       exit 78
     fi
   fi
-  if [ "$STASHED" -eq 1 ]; then
-    if ! git stash apply 'stash@{0}'; then
-      echo "EROHA_R4_STASH_RESTORE_FAILED: stash retained" >&2
-      exit 78
-    fi
-    git stash drop 'stash@{0}'
-  fi
+  restore_own_stash || exit 78
   echo "EROHA_R4_SYNC_ABORTED: local changes restored" >&2
   exit 78
 fi
 
 # 4) Apply first, drop only after successful restoration.
-if [ "$STASHED" -eq 1 ]; then
-  git stash apply 'stash@{0}'
-  git stash drop 'stash@{0}'
-fi
+restore_own_stash || exit 78
 
 # 5) Проверим, есть ли реальные изменения
 CHANGED="$(git status --porcelain)"
