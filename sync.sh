@@ -35,13 +35,13 @@ if ! git diff --quiet || ! git diff --cached --quiet || [ -n "$(git ls-files --o
 fi
 
 # 3) Подтянем изменения с origin и аккуратно примем их через rebase
-git fetch origin "$BRANCH" || true
+git fetch origin "$BRANCH"
 git checkout -B "$BRANCH"
-git pull --rebase origin "$BRANCH" || true
+git pull --rebase origin "$BRANCH"
 
 # 4) Вернём stash, если он был
 if [ "$STASHED" -eq 1 ]; then
-  git stash pop || true
+  git stash pop
 fi
 
 # 5) Проверим, есть ли реальные изменения
