@@ -48,12 +48,31 @@ if ! git diff --quiet || ! git diff --cached --quiet || [ -n "$(git ls-files --o
   STASHED=1
 fi
 
-# Если rebase завершится с ошибкой, stash останется в списке для восстановления.
-# Не выполнять checkout -B: он может сбросить указатель существующей ветки.
-git pull --rebase origin "$BRANCH"
+# Rebase may conflict after temporarily saving local edits. On failure,
+# abort the in-progress rebase first, and only then restore the local stash.
+# If abort/restoration fails, leave the stash intact and report a hard error.
+if ! git pull --rebase origin "$BRANCH"; then
+  echo "EROHA_R4_REBASE_FAILED: attempting safe recovery" >&2
+  REBASE_MERGE="$(git rev-parse --git-path rebase-merge)"
+  REBASE_APPLY="$(git rev-parse --git-path rebase-apply)"
+  if [ -d "$REBASE_MERGE" ] || [ -d "$REBASE_APPLY" ]; then
+    if ! git rebase --abort; then
+      echo "EROHA_R4_REBASE_ABORT_FAILED: stash retained" >&2
+      exit 78
+    fi
+  fi
+  if [ "$STASHED" -eq 1 ]; then
+    if ! git stash apply 'stash@{0}'; then
+      echo "EROHA_R4_STASH_RESTORE_FAILED: stash retained" >&2
+      exit 78
+    fi
+    git stash drop 'stash@{0}'
+  fi
+  echo "EROHA_R4_SYNC_ABORTED: local changes restored" >&2
+  exit 78
+fi
 
-# 4) Сначала применить stash, и только после успешного применения удалить его.
-# При конфликте восстановление прерывается, а резервная запись сохраняется.
+# 4) Apply first, drop only after successful restoration.
 if [ "$STASHED" -eq 1 ]; then
   git stash apply 'stash@{0}'
   git stash drop 'stash@{0}'
