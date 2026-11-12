@@ -3,6 +3,16 @@
 Status: **PROPOSAL / DRAFT / NOT DEPLOYED / INDUSTRIAL NO-GO**  
 Evidence checked: 2026-11-10. This file describes a migration, not user approval to execute it.
 
+## 2026-11-12 — archive payload verification and canonical CLI rejection
+
+**Research-only candidate evidence:** the ZIP builder now verifies all extracted member CRCs with `ZipFile.testzip()` before atomically linking a new output name. The earlier `zipfile.is_zipfile()` recognized the ZIP container but did not verify decompressed member contents. A synthetic negative test corrupts the central-directory CRC of the **second** member while keeping the archive structurally recognizable, and confirms `INVALID_OUTPUT_ZIP_CRC`, no published output and staging cleanup. A second negative test mutates a real compressed DEFLATE block to reserved block type 3, requiring the CLI to catch `zlib.error`, return its documented non-success code **41**, and leave no ZIP behind. This proves these tested corruption paths, not independent artifact attestation or all storage failures.
+
+**Observed CI:** candidate job `Validate both candidate release holds without publishing` passed `33` integrated controls + `45` archive tests + `22` manifest/CLI tests = **100 distinct unittest methods**, each run normally and with `python -O` (**200 successful executions**) at https://github.com/Eroha68/eroha-pro/actions/runs/43146276929 . The separate `Production main remains NO-GO until independent authorization` job is intentionally failing; do not report the overall workflow as green.
+
+**Remaining acceptance:** `0/10` industrial G1–G10 gates accepted based on available evidence; **24 planned external G1–G6 scenarios** still lack industrial acceptance. The `18` A01–F18 examples and `16` I01–I16 checkpoints overlap other gate scenarios; **do not sum** them. R2–R4 are **3 open investigations**, and G7–G10 do not yet have an exhaustive owner-approved unique-test inventory. The actual unique count still outstanding is therefore **unknown**.
+
+**Highest-priority stop:** same-admin repository control is not an independent Guardian/Broker trust root. No real Proposer-denial evidence, independent signer/key custody, Broker-exclusive publishing rights, scoped artifact-bound final grant, disposable publication, or observed rollback has been obtained. Next step is an owner-approved separation-of-duties migration and read-only verification of enforcement before any production enablement. Do not change access rights, secrets, `main`, or publishing paths from this draft. **INDUSTRIAL NO-GO**.
+
 ## Verified boundary at handoff
 
 - The current `main` contains **three identified write-capable paths in source**: `.github/workflows/eroha_core_ci.yml` has an active `release` job, `contents: write`, and `git push`; `.github/workflows/deploy.yml` uses `secrets.HF_TOKEN` and pushes to Hugging Face; `sync.sh` defaults to `main` and runs `git push -u origin "$BRANCH"`. Actual execution, external credentials and effective bypass rights of `sync.sh` have **not** been demonstrated.
