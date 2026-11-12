@@ -401,6 +401,37 @@ class ArchiveBoundaryTest(unittest.TestCase):
         self.assertEqual(self.output.read_bytes(), sentinel)
         self.assertEqual(list(self.output.parent.glob(".eroha-archive-*.zip")), [])
 
+    def test_corrupted_second_zip_member_crc_rejected_before_publication(self):
+        import build_release_archive as module
+        from unittest.mock import patch
+
+        self.add_commit("extra.txt", b"SYNTHETIC_SECOND_MEMBER")
+        original_is_zip = zipfile.is_zipfile
+        corruption_injected = [False]
+
+        def corrupt_crc_in_structurally_valid_zip(file_obj):
+            file_obj.seek(0)
+            payload = bytearray(file_obj.read())
+            first = payload.index(b"PK\x01\x02")
+            second = payload.index(b"PK\x01\x02", first + 4)
+            payload[second + 16] ^= 1  # Second member central-directory CRC
+            file_obj.seek(0)
+            file_obj.write(payload)
+            file_obj.truncate()
+            file_obj.flush()
+            corruption_injected[0] = True
+            return original_is_zip(file_obj)
+
+        with patch.object(module.zipfile, "is_zipfile",
+                          side_effect=corrupt_crc_in_structurally_valid_zip):
+            with self.assertRaisesRegex(ValueError, "INVALID_OUTPUT_ZIP_CRC"):
+                self.fixture_build(self.repo, self.commit, self.output)
+        self.assertTrue(corruption_injected[0])
+        self.assertFalse(self.output.exists())
+        self.assertEqual(
+            list(self.output.parent.glob(".eroha-archive-*.zip")), []
+        )
+
     def test_tracked_zip_is_not_a_writable_release_destination(self):
         self.add_commit("tracked.zip", b"SYNTHETIC_TRACKED_DATA")
         destination = self.repo / "tracked.zip"
