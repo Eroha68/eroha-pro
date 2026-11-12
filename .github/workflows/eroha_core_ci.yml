@@ -7,7 +7,7 @@ on:
     - cron: '0 9 * * *' # запуск каждый день в 09:00 UTC
 
 permissions:
-  contents: write  # 👈 разрешаем боту пушить теги и создавать релизы
+  contents: read  # Research R4: untrusted CI may build but cannot write releases
 
 jobs:
   validate-core:
@@ -83,6 +83,9 @@ jobs:
           path: artifacts/ErohaSuite_Core.zip
 
   release:
+    # Research R4: remain disabled until independent Guardian/Broker custody is proven.
+    # Merging this proposal intentionally suspends automatic release creation.
+    if: ${{ false }}
     name: 🏁 Автоматическая публикация релиза
     runs-on: ubuntu-latest
     needs: [build-archive]
